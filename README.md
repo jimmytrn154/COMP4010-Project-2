@@ -15,7 +15,7 @@ At this stage, the repo is centered on:
 
 The most important project documents in this repository are:
 
-- [Proposal write-up](COMP4010_Project2_Team3.pdf): the main project proposal, scope, motivation, and planned direction.
+- [Proposal write-up](COMP4010_Project2_Team3_proposal_writeup.pdf): the main project proposal, scope, motivation, and planned direction.
 - [Wireframe](wireframe.png): the current dashboard wireframe and UI reference.
 - [Project progress log](PROJECT_PROGRESS.md): the ongoing status tracker for completed work, current work, risks, and next tasks.
 
@@ -46,7 +46,7 @@ COMP4010-Project-2/
 
 ### Proposal write-up
 
-[COMP4010_Project2_Team3.pdf](COMP4010_Project2_Team3.pdf) is the primary proposal document for the project. It should be treated as the main reference for:
+[COMP4010_Project2_Team3.pdf](COMP4010_Project2_Team3_proposal_writeup.pdf) is the primary proposal document for the project. It should be treated as the main reference for:
 
 - project problem statement
 - goals and scope
@@ -135,7 +135,7 @@ Based on the current repository contents:
 
 ## Recommended Reading Order
 
-1. [COMP4010_Project2_Team3.pdf](COMP4010_Project2_Team3.pdf)
+1. [COMP4010_Project2_Team3_proposal_writeup.pdf](COMP4010_Project2_Team3_proposal_writeup.pdf)
 2. [wireframe.png](wireframe.png)
 3. [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md)
 4. [scripts/02_clean_rainfall.py](scripts/02_clean_rainfall.py)

@@ -24,11 +24,11 @@ Build an interactive Python Shiny dashboard for the Vietnamese Mekong Delta that
 | Surface-water data | Done | JRC Global Surface Water monthly province-level water area extracted for `1984-2021` |
 | Cropland data | Done | ESA WorldCover 2021 province-level cropland area extracted |
 | Population data | Done | WorldPop province-year population extracted for `2000-2021` |
-| Rainfall cleaning | Done / needs update | Existing cleaning script should be updated to use the new `1981-2025` rainfall file |
-| Integrated panel dataset | Not started | Need to merge rainfall, water, cropland, population, and boundary data |
-| Dashboard app | Not started | `mvp.py` or final Shiny app entry point still needs implementation |
-| Dependency management | Not started | Need `requirements.txt` |
-| Documentation | In progress | README and progress tracker updated to reflect new data status |
+| Rainfall cleaning | Done | Existing cleaning script updated to use the new `1981-2025` rainfall file |
+| Integrated panel dataset | Done | Merged rainfall, water, cropland, population, and boundary data into one panel |
+| Dashboard app | Done | Full interactive Shiny app with Mapbox choropleth and premium dark aesthetics implemented |
+| Dependency management | Done | `requirements.txt` added with `shiny`, `pandas`, `plotly`, `geopandas`, and `shinywidgets` |
+| Documentation | Done | README, progress tracker, and walkthroughs updated to reflect completion |
 
 ## Data Inventory
 
@@ -66,9 +66,9 @@ Different datasets have different valid periods, so the dashboard should use dif
 | Collect ESA WorldCover cropland data | Done | May 2026 | Province-level cropland area exported for 2021 |
 | Collect WorldPop population data | Done | May 2026 | Province-year population exported for 2000-2021 |
 | Update documentation | Done / ongoing | May 2026 | README and progress tracker updated |
-| Build integrated panel dataset | Not started | Next | Merge data into `province_month_panel.csv` |
-| Build dashboard prototype | Not started | Next | Start with rainfall + water + exposure views |
-| Add install instructions and dependencies | Not started | Next | Create `requirements.txt` |
+| Build integrated panel dataset | Done | May 2026 | Merged data into `province_month_panel.csv` |
+| Build dashboard prototype | Done | May 2026 | Built rainfall + water + exposure views with interactive map and trend charts |
+| Add install instructions and dependencies | Done | May 2026 | Created `requirements.txt` |
 | Final polish and submission assets | Not started | TBD | README, slides, report, demo |
 
 ## Completed Work
@@ -102,27 +102,17 @@ Previously collected rainfall files may still exist for reference:
 
 ## In Progress
 
-| Task | Owner | Started | Status | Notes |
-|---|---|---|---|---|
-| Update documentation to reflect expanded dataset inventory | Team | 2026-05-29 | In progress | README and progress tracker updated; keep syncing with repo |
-| Plan integrated data pipeline | Team | 2026-05-29 | In progress | Need merge script and final table schema |
+| Final polish and submission assets | Team | TBD | Not started | Prepare README, slides, report, demo |
 
 ## Next Tasks
 
 | Priority | Task | Owner | Notes |
 |---|---|---|---|
-| High | Update rainfall cleaning script | Unassigned | Switch input to `mekong_province_month_rainfall_1981_2025.csv` |
-| High | Create water cleaning script | Unassigned | Clean `mekong_province_month_water_1984_2021.csv`; check missing values and units |
-| High | Create exposure cleaning script | Unassigned | Merge `mekong_province_cropland_2021.csv` and `mekong_province_population_2000_2021.csv` |
-| High | Build integrated panel table | Unassigned | Create `province_month_panel.csv` by merging rainfall, water, population, and cropland |
-| High | Add `requirements.txt` | Unassigned | Include Shiny, pandas, plotly, geopandas, pyarrow if used |
-| High | Create dashboard app entry point | Unassigned | Replace empty `mvp.py` or create `app.py` |
-| Medium | Add first dashboard charts | Unassigned | Map, rainfall trend, water trend, anomaly heatmap, province ranking |
-| Medium | Add risk-score prototype | Unassigned | Start simple: rainfall anomaly + water area + exposure context |
-| Medium | Document GEE extraction workflow | Unassigned | Add scripts or instructions for all five raw datasets |
+| High | Final polish and submission | Unassigned | README, slides, report, demo |
+| Medium | Add risk-score prototype | Unassigned | Explore advanced risk metrics: rainfall anomaly + water area + exposure context |
 | Low | Remove or archive outdated sample files | Unassigned | Keep old rainfall files only if useful for testing |
 
-## Planned Processed Outputs
+## Processed Outputs
 
 Target files in `data/processed/`:
 
@@ -138,8 +128,6 @@ Target files in `data/processed/`:
 
 | Item | Type | Status | Notes |
 |---|---|---|---|
-| No dashboard code yet | Risk | Open | Data pipeline is ahead of app implementation |
-| No dependency file | Risk | Open | Setup is not yet reproducible in one step |
 | Mixed dataset time coverage | Risk | Open | Rainfall, water, population, and cropland have different time ranges |
 | Surface water is not direct flood impact | Limitation | Open | JRC should be labeled as surface-water extent or flood proxy |
 | Earth Engine project access may vary by teammate | Blocker | Open | Raw data already exported, but re-extraction may need GEE access |
@@ -200,9 +188,16 @@ Use this block when adding a new weekly or milestone update:
 - What is blocked: Dashboard implementation has not started yet.
 - Next action: Add dependency file and start the MVP dashboard structure.
 
-### Update - 2026-05-29
+### Update - 2026-05-29 (Part 1)
 
 - What was completed: Pulled expanded GEE datasets: CHIRPS rainfall `1981-2025`, JRC surface water `1984-2021`, ESA WorldCover cropland `2021`, WorldPop population `2000-2021`, and FAO GAUL Mekong boundary GeoJSON.
 - What is in progress: Updating documentation and planning the integrated data-processing pipeline.
 - What is blocked: Dashboard implementation and processed panel construction have not started yet.
 - Next action: Build `province_month_panel.csv`, create `requirements.txt`, and start the Python Shiny app.
+
+### Update - 2026-05-29 (Part 2)
+
+- What was completed: Data cleaning scripts created for water and exposure. Built the integrated `province_month_panel.csv`. `requirements.txt` added. `app.py` completely rewritten into a premium, responsive dashboard with a custom dark UI, glassmorphism aesthetics, interactive Plotly Mapbox choropleth, and trend charts.
+- What is in progress: Exploring a risk-score prototype combining multiple layers.
+- What is blocked: None.
+- Next action: Final polish and preparation of submission assets (slides, report, demo).

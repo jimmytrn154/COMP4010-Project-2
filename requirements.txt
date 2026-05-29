@@ -1,0 +1,6 @@
+pandas
+shiny
+plotly
+geopandas
+htmltools
+shinywidgets

@@ -1,6 +1,6 @@
 import pandas as pd
 
-df = pd.read_csv("../data/raw/mekong_province_month_rainfall_2020_2024.csv")
+df = pd.read_csv("data/raw/mekong_province_month_rainfall_1981_2025.csv")
 
 # Rename GEE output column if needed
 # Usually rainfall value may appear as "mean"
@@ -40,7 +40,7 @@ df = df[
     ]
 ]
 
-df.to_csv("../data/processed/province_month_rainfall.csv", index=False)
+df.to_csv("data/processed/province_month_rainfall.csv", index=False)
 
 print("Saved data/processed/province_month_rainfall.csv")
 print(df.head())

@@ -1,0 +1,16 @@
+metric,value
+dataset_shape,"(780, 15)"
+n_provinces,13
+date_min,2020-01-01
+date_max,2024-12-01
+avg_rainfall_mm,155.47802999048147
+median_rainfall_mm,160.92917003698312
+max_rainfall_mm,559.4639768198103
+min_rainfall_mm,0.0
+wettest_record_province,Ca Mau
+wettest_record_date,2024-09-01
+driest_record_province,Vinh Long
+driest_record_date,2024-02-01
+highest_avg_rainfall_province,Ca Mau
+lowest_avg_rainfall_province,Dong Thap
+highest_variability_province,Tra Vinh

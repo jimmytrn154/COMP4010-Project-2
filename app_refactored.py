@@ -60,7 +60,7 @@ if df["combined_risk_score"].isna().all():
     df["water_score"] = minmax(df["water_area_pct"].fillna(0))
     df["drought_score"] = minmax((-df["rainfall_zscore"]).clip(lower=0))
     df["exposure_score"] = 0.6 * minmax(df["population_total"].fillna(0)) + 0.4 * minmax(df["cropland_area_km2"].fillna(0))
-    df["combined_risk_score"] = (
+    df["combined_risk_score"] = ( #combine risk score as a weighted average of components, with rainfall and water given slightly higher weight
         0.35 * df["water_score"]
         + 0.25 * df["rainfall_score"]
         + 0.25 * df["drought_score"]
@@ -182,6 +182,24 @@ html, body {
 }
 .card.compact {
     padding: 15px;
+}
+.map-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 640px;
+}
+.map-widget-shell {
+    flex: 1 1 auto;
+    min-height: 580px;
+}
+.map-widget-shell > div,
+.map-widget-shell .shiny-bound-output,
+.map-widget-shell .html-widget,
+.map-widget-shell .plotly,
+.map-widget-shell .js-plotly-plot,
+.map-widget-shell .plot-container,
+.map-widget-shell .svg-container {
+    width: 100% !important;
 }
 .card-title {
     font-size: 1.03rem;
@@ -317,8 +335,8 @@ app_ui = ui.page_fluid(
                 ui.div(
                     ui.div("Interactive Mekong Delta map", class_="card-title"),
                     ui.div("Start here: locate spatial water-risk patterns by province.", class_="card-subtitle"),
-                    output_widget("map_plot", height="560px"),
-                    class_="card",
+                    ui.div(output_widget("map_plot", height="580px", width="100%"), class_="map-widget-shell"),
+                    class_="card map-card",
                 ),
             ),
             ui.div(
@@ -483,6 +501,8 @@ def server(input, output, session):
             opacity=0.78,
         )
         fig.update_layout(
+            height=580,
+            autosize=True,
             margin=dict(l=0, r=0, t=0, b=0),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",

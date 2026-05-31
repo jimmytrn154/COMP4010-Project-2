@@ -11,3 +11,6 @@ _pycache__/**
 
 .venv/
 _envprobe.txt
+
+.venv/
+_envprobe.txt

@@ -8,3 +8,9 @@ eda_outputs/
 __pycache__/
 
 _pycache__/**
+
+.venv/
+_envprobe.txt
+
+.venv/
+_envprobe.txt

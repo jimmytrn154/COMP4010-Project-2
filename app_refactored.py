@@ -95,6 +95,9 @@ if df["combined_risk_score"].isna().all():
         + 0.15 * df["exposure_score"]
     )
 
+df["has_population"] = df["population_total"].notna()
+df["has_cropland"] = df["cropland_area_km2"].notna()
+
 df = df.fillna(0)
 
 with open(BOUNDARY_PATH, encoding="utf-8") as f:
@@ -706,9 +709,22 @@ html, body {
 }
 .extreme-grid {
     display: grid;
+    gap: 18px;
+}
+.extreme-top-grid {
+    display: grid;
     grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.1fr) minmax(0, 1.1fr);
     gap: 18px;
     align-items: stretch;
+}
+.extreme-second-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
+    align-items: stretch;
+}
+.extreme-heatmap-card {
+    grid-column: 1 / -1;
 }
 .extreme-card {
     display: flex;
@@ -761,6 +777,19 @@ html, body {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 18px;
+}
+.coverage-note {
+    color: #cbd5e1;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.24);
+    border-radius: 14px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+.coverage-note b {
+    color: #f8fafc;
 }
 .shiny-input-container {
     margin-bottom: 10px;
@@ -820,7 +849,7 @@ html, body {
     line-height: 1.5;
 }
 @media (max-width: 1200px) {
-    .overview-grid, .bottom-grid, .kpi-grid, .control-grid, .duo-grid, .extreme-grid, .method-grid {
+    .overview-grid, .bottom-grid, .kpi-grid, .control-grid, .duo-grid, .extreme-grid, .extreme-top-grid, .extreme-second-grid, .method-grid {
         grid-template-columns: 1fr;
     }
 }
@@ -982,21 +1011,43 @@ app_ui = ui.page_fluid(
         section_header(3, "Rainfall extremes", "Daily rainfall structure inside each selected month"),
         ui.div(
             ui.div(
-                ui.div("Daily-derived indicators", class_="card-title"),
-                ui.div("These metrics summarize daily CHIRPS rainfall inside the selected monthly record.", class_="card-subtitle"),
-                ui.input_select("extreme_metric", "Extreme rainfall metric", choices=extreme_metric_options, selected="max_1day_rainfall"),
-                ui.output_ui("extreme_kpis"),
-                class_="card extreme-card",
+                ui.div(
+                    ui.div("Daily-derived indicators", class_="card-title"),
+                    ui.div("These metrics summarize daily CHIRPS rainfall inside the selected monthly record.", class_="card-subtitle"),
+                    ui.input_select("extreme_metric", "Extreme rainfall metric", choices=extreme_metric_options, selected="max_1day_rainfall"),
+                    ui.output_ui("extreme_kpis"),
+                    class_="card extreme-card",
+                ),
+                chart_card(
+                    "Rainfall structure inside selected month",
+                    "Daily composition by dry days, rainy days, heavy-rain days, and extreme-rain days.",
+                    "monthly_rain_structure_plot", 360,
+                ),
+                chart_card(
+                    "Extreme signature",
+                    "Normalized shape of one-day intensity, rainy share, heavy rain, dry spell, and wet spell.",
+                    "extreme_signature_plot", 360,
+                ),
+                class_="extreme-top-grid",
             ),
-            chart_card(
-                "Extreme metric ranking",
-                "Provinces ranked by the selected daily-derived monthly indicator.",
-                "extreme_ranking_plot", 360,
+            ui.div(
+                chart_card(
+                    "Extreme metric ranking",
+                    "Provinces ranked by the selected daily-derived monthly indicator.",
+                    "extreme_ranking_plot", 360,
+                ),
+                chart_card(
+                    "Extreme metric trend",
+                    "Selected-year monthly pattern for the selected province, or delta average.",
+                    "extreme_trend_plot", 360,
+                ),
+                class_="extreme-second-grid",
             ),
-            chart_card(
-                "Extreme metric trend",
-                "Selected-year monthly pattern for the selected province, or delta average.",
-                "extreme_trend_plot", 360,
+            ui.div(
+                ui.div("Extreme metric heatmap", class_="card-title"),
+                ui.div("Province-by-month view for the selected year and daily-derived metric.", class_="card-subtitle"),
+                output_widget("extreme_calendar_heatmap", height="360px"),
+                class_="card extreme-heatmap-card",
             ),
             class_="extreme-grid",
         ),
@@ -1025,13 +1076,29 @@ app_ui = ui.page_fluid(
         # ===========================================================
         # ACT 5 - WHO / WHAT is exposed?
         # ===========================================================
-        section_header(5, "Who and what is exposed?", "Population & cropland context"),
+        section_header(5, "Who and what is exposed?", "Separate exposure layers because coverage differs"),
+        ui.div(
+            ui.HTML(
+                "<b>Population:</b> WorldPop yearly, available 2000-2020. "
+                "<b>Cropland:</b> ESA WorldCover static snapshot, available 2021. "
+                "Shown separately because these layers do not share a same-year coverage window."
+            ),
+            class_="coverage-note",
+        ),
         ui.div(
             chart_card(
-                "Exposure context: people vs cropland",
-                "Population against cropland area per province (selected year). Bubble size = combined risk; the selected province is highlighted.",
-                "exposure_plot", 360,
+                "Population exposure",
+                "Province ranking by population. Uses the latest available population year at or before the selected year.",
+                "population_exposure_plot", 360,
             ),
+            chart_card(
+                "Cropland exposure",
+                "Province ranking by cropland area from the static 2021 land-cover snapshot.",
+                "cropland_exposure_plot", 360,
+            ),
+            class_="duo-grid",
+        ),
+        ui.div(
             chart_card(
                 "Province comparison vs history",
                 "Selected-month values benchmarked against each province's historical average for that month.",
@@ -1096,6 +1163,27 @@ def current_filter_df(input):
     if p != "All Provinces":
         d = d[d["province_name"] == p]
     return d
+
+
+def latest_available_year(column, availability_column, selected_year):
+    valid_years = sorted(
+        df.loc[df[availability_column] & (df[column] > 0), "year"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+    valid_years = [int(y) for y in valid_years if int(y) <= selected_year]
+    return max(valid_years) if valid_years else None
+
+
+def static_available_year(column, availability_column):
+    valid_years = sorted(
+        df.loc[df[availability_column] & (df[column] > 0), "year"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+    return int(max(valid_years)) if valid_years else None
 
 
 def selected_province_or_mean_year_df(input):
@@ -1437,6 +1525,101 @@ def server(input, output, session):
 
     @output
     @render_widget
+    def monthly_rain_structure_plot():
+        d = current_filter_df(input)
+        if d.empty:
+            return empty_fig(360)
+
+        dry_days = float(d["dry_days_count"].mean())
+        extreme_days = float(d["heavy_rain_days_50mm"].mean())
+        heavy_days = max(float(d["heavy_rain_days_20mm"].mean()) - extreme_days, 0)
+        rainy_light_days = max(float(d["rain_days_count"].mean()) - float(d["heavy_rain_days_20mm"].mean()), 0)
+        observed_days = float(d["days_observed"].mean())
+
+        parts = [
+            ("Dry <1 mm", dry_days, "#f59e0b"),
+            ("Rain 1-19 mm", rainy_light_days, "#38bdf8"),
+            ("Heavy 20-49 mm", heavy_days, "#2563eb"),
+            ("Extreme >=50 mm", extreme_days, "#f43f5e"),
+        ]
+        labels, values, colors = zip(*parts)
+
+        fig = go.Figure(go.Pie(
+            labels=labels,
+            values=values,
+            hole=0.58,
+            marker=dict(colors=colors, line=dict(color="#0d1b2e", width=2)),
+            textinfo="label+percent",
+            textposition="outside",
+            hovertemplate="<b>%{label}</b><br>%{value:.1f} days<extra></extra>",
+            sort=False,
+        ))
+        fig.update_layout(
+            height=360,
+            margin=dict(l=10, r=10, t=10, b=20),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=PALETTE["text"], size=11),
+            legend=dict(orientation="h", y=-0.05, x=0.5, xanchor="center"),
+            showlegend=True,
+        )
+        fig.add_annotation(
+            x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+            text=f"{observed_days:.1f}<br>observed<br>days",
+            font=dict(color="#f8fafc", size=13),
+            align="center",
+        )
+        return fig
+
+    @output
+    @render_widget
+    def extreme_signature_plot():
+        d = current_filter_df(input)
+        if d.empty:
+            return empty_fig(360)
+
+        signature_metrics = [
+            ("Max 1-day", "max_1day_rainfall"),
+            ("Rainy share", "rain_day_ratio"),
+            ("Heavy days", "heavy_rain_days_20mm"),
+            ("Dry spell", "max_consecutive_dry_days"),
+            ("Wet spell", "max_consecutive_wet_days"),
+        ]
+
+        values = []
+        for _, col in signature_metrics:
+            raw_value = float(d[col].mean())
+            col_min = float(df[col].min())
+            col_max = float(df[col].max())
+            values.append(0 if col_max == col_min else (raw_value - col_min) / (col_max - col_min))
+
+        labels = [label for label, _ in signature_metrics]
+        fig = go.Figure(go.Scatterpolar(
+            r=values + [values[0]],
+            theta=labels + [labels[0]],
+            fill="toself",
+            line=dict(color=PALETTE["accent"], width=3),
+            fillcolor="rgba(56,189,248,0.22)",
+            marker=dict(color=PALETTE["amber"], size=7),
+            hovertemplate="%{theta}: %{r:.2f}<extra></extra>",
+        ))
+        fig.update_layout(
+            height=360,
+            margin=dict(l=35, r=35, t=20, b=30),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=PALETTE["text"], size=11),
+            showlegend=False,
+            polar=dict(
+                bgcolor="rgba(0,0,0,0)",
+                radialaxis=dict(range=[0, 1], showticklabels=True, tickfont=dict(size=9), gridcolor=PALETTE["grid"]),
+                angularaxis=dict(gridcolor=PALETTE["grid"]),
+            ),
+        )
+        return fig
+
+    @output
+    @render_widget
     def extreme_ranking_plot():
         d = current_all_provinces_df(input)
         metric = input.extreme_metric()
@@ -1527,6 +1710,42 @@ def server(input, output, session):
         fig.update_yaxes(title=label)
         if metric in {"rain_day_ratio", "dry_day_ratio"}:
             fig.update_yaxes(tickformat=".0%")
+        return fig
+
+    @output
+    @render_widget
+    def extreme_calendar_heatmap():
+        y = int(input.year())
+        metric = input.extreme_metric()
+        label = metric_labels.get(metric, metric)
+        d = df[df["year"] == y].copy()
+        if d.empty:
+            return empty_fig(360)
+
+        pivot = d.pivot_table(
+            index="province_name",
+            columns="month",
+            values=metric,
+            aggfunc="mean",
+        ).reindex(provinces)
+        if pivot.dropna(how="all").empty:
+            return empty_fig(360)
+
+        fig = px.imshow(
+            pivot,
+            labels=dict(x="Month", y="", color=label),
+            color_continuous_scale=metric_color_scales.get(metric, "Viridis"),
+            aspect="auto",
+        )
+        fig.update_layout(
+            margin=dict(l=80, r=10, t=10, b=35),
+            height=360,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#cbd5e1", size=10),
+            coloraxis_colorbar=dict(title=label, thickness=10, len=0.75),
+            xaxis=dict(dtick=1),
+        )
         return fig
 
     # ---- ACT 4: risk-over-time + seasonality + heatmap ---------
@@ -1657,6 +1876,97 @@ def server(input, output, session):
         apply_dark_layout(fig, 360)
         fig.update_xaxes(title="Population")
         fig.update_yaxes(title="Cropland area (km²)")
+        return fig
+
+    @output
+    @render_widget
+    def population_exposure_plot():
+        selected_year = int(input.year())
+        pop_year = latest_available_year("population_total", "has_population", selected_year)
+        if pop_year is None:
+            return empty_fig(360, "No population exposure data available")
+
+        d = (
+            df[(df["year"] == pop_year) & df["has_population"]]
+            .groupby("province_name", as_index=False)
+            .agg(population_total=("population_total", "mean"))
+            .sort_values("population_total", ascending=True)
+        )
+        d = d[d["population_total"] > 0]
+        if d.empty:
+            return empty_fig(360, "No population exposure data available")
+
+        selected_p = input.province()
+        colors = [
+            PALETTE["amber"] if (selected_p != "All Provinces" and p == selected_p)
+            else PALETTE["purple"]
+            for p in d["province_name"]
+        ]
+        fig = go.Figure(go.Bar(
+            x=d["population_total"],
+            y=d["province_name"],
+            orientation="h",
+            marker_color=colors,
+            text=[f"{v/1_000_000:.2f}M" for v in d["population_total"]],
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate="<b>%{y}</b><br>Population: %{x:,.0f}<extra></extra>",
+        ))
+        apply_dark_layout(fig, 360)
+        fig.update_layout(margin=dict(l=90, r=55, t=30, b=38))
+        fig.update_xaxes(title=f"Population ({pop_year})")
+        fig.update_yaxes(showgrid=False)
+        fig.add_annotation(
+            x=1, y=1.08, xref="paper", yref="paper", showarrow=False,
+            text=f"Displaying WorldPop {pop_year}",
+            font=dict(color=PALETTE["muted"], size=11),
+            xanchor="right",
+        )
+        return fig
+
+    @output
+    @render_widget
+    def cropland_exposure_plot():
+        crop_year = static_available_year("cropland_area_km2", "has_cropland")
+        if crop_year is None:
+            return empty_fig(360, "No cropland exposure data available")
+
+        d = (
+            df[(df["year"] == crop_year) & df["has_cropland"]]
+            .groupby("province_name", as_index=False)
+            .agg(cropland_area_km2=("cropland_area_km2", "mean"))
+            .sort_values("cropland_area_km2", ascending=True)
+        )
+        d = d[d["cropland_area_km2"] > 0]
+        if d.empty:
+            return empty_fig(360, "No cropland exposure data available")
+
+        selected_p = input.province()
+        colors = [
+            PALETTE["amber"] if (selected_p != "All Provinces" and p == selected_p)
+            else PALETTE["green"]
+            for p in d["province_name"]
+        ]
+        fig = go.Figure(go.Bar(
+            x=d["cropland_area_km2"],
+            y=d["province_name"],
+            orientation="h",
+            marker_color=colors,
+            text=[f"{v:,.0f}" for v in d["cropland_area_km2"]],
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate="<b>%{y}</b><br>Cropland: %{x:,.1f} kmÂ²<extra></extra>",
+        ))
+        apply_dark_layout(fig, 360)
+        fig.update_layout(margin=dict(l=90, r=55, t=30, b=38))
+        fig.update_xaxes(title=f"Cropland area (kmÂ²), {crop_year} snapshot")
+        fig.update_yaxes(showgrid=False)
+        fig.add_annotation(
+            x=1, y=1.08, xref="paper", yref="paper", showarrow=False,
+            text=f"Displaying ESA WorldCover {crop_year}",
+            font=dict(color=PALETTE["muted"], size=11),
+            xanchor="right",
+        )
         return fig
 
     @output

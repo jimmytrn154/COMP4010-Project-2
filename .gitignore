@@ -1,0 +1,16 @@
+# Ignore virtual environment
+chun/
+
+# Ignore generated EDA artifacts
+eda_outputs/
+
+# Ignore Python bytecode caches
+__pycache__/
+
+_pycache__/**
+
+.venv/
+_envprobe.txt
+
+.venv/
+_envprobe.txt

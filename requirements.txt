@@ -1,0 +1,14 @@
+pandas
+shiny
+plotly<6
+geopandas
+htmltools
+shinywidgets
+anywidget
+scikit-learn
+xgboost
+lightgbm
+joblib
+matplotlib
+seaborn
+nbformat

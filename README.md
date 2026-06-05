@@ -2,269 +2,271 @@
 
 ## Overview
 
-This repository contains the working materials for **Mekong FloodLens**, a COMP4010 project focused on interactive water-risk visualization for the Vietnamese Mekong Delta.
+Mekong FloodLens is a COMP4010 project about province-level water-risk analysis for the Vietnamese Mekong Delta. The repository combines:
 
-The project has moved beyond a rainfall-only MVP. The current pipeline includes rainfall, surface-water/flood-proxy, cropland, population, and province-boundary data pulled from Google Earth Engine, processed into a dashboard-ready province-month panel, and visualized in a Python Shiny dashboard.
+- multi-source environmental and exposure data
+- a processing pipeline that builds a dashboard-ready province-month panel
+- daily rainfall feature engineering
+- a Python Shiny dashboard for exploratory analysis
+- a province-level machine learning rainfall forecast preview
+
+The current repo is no longer a rainfall-only MVP. It now supports rainfall, rainfall anomaly, dryness proxy metrics, surface-water extent, cropland exposure, population exposure, daily rainfall structure, and a 12-month daily rainfall forecast preview based on XGBoost outputs.
+
+## Current Repo Idea
+
+The dashboard is designed as an observational and exploratory analysis tool, not an operational warning system. Its current analytical framing is:
+
+- what is happening across the Mekong provinces right now
+- which provinces look wetter or drier than normal
+- how rainfall relates to observed surface water
+- how provinces compare on selected indicators
+- what daily rainfall history and forecast output look like for each province
+
+The current app intentionally emphasizes transparent indicators such as:
+
+- `rainfall_mm`
+- `rainfall_anomaly`
+- `rainfall_zscore`
+- `dry_index`
+- `dry_day_ratio`
+- `max_consecutive_dry_days`
+- `water_area_km2`
+- `water_area_pct`
+
+The repo no longer centers the dashboard around a combined risk score story. The live app focuses on interpretable rainfall, dryness, and surface-water metrics.
+
+## Current Progress
+
+At the current repo state:
+
+- raw data collection is complete for the main rainfall, surface-water, cropland, population, and boundary layers
+- processed monthly rainfall, water, exposure, and merged panel outputs exist in `data/processed/`
+- daily rainfall has been expanded into monthly extreme and persistence features
+- daily rainfall has been split into per-province files for modeling
+- province-level forecast result files for the next 12 months already exist in `modeling/result/`
+- the main Shiny dashboard is implemented in `app_refactored.py`
+- the dashboard includes an `ML Prediction` tab that visualizes observed daily history plus recursive XGBoost forecast output
+
+For the running project log, see [PROJECT_PROGRESS_UPDATED.md](PROJECT_PROGRESS_UPDATED.md).
 
 ## Start Here
 
-The most important project documents are:
+Recommended reading order:
 
-- [Proposal write-up](COMP4010_Project2_Team3_proposal_writeup.pdf): project scope, motivation, and planned dashboard direction.
-- [Wireframe](wireframe.png): current dashboard layout and interaction reference.
-- [Project progress log](PROJECT_PROGRESS_UPDATED.md): live tracker for completed work, risks, and next tasks.
+1. [PROJECT_PROGRESS_UPDATED.md](PROJECT_PROGRESS_UPDATED.md)
+2. [README.md](README.md)
+3. [wireframe.png](wireframe.png)
+4. [app_refactored.py](app_refactored.py)
+5. [modeling/ml.md](modeling/ml.md)
 
-If you are new to the repo, read those three files first.
+Useful supporting assets:
 
-## Repository Contents
+- [COMP4010_Project2_Team3_proposal_writeup.pdf](COMP4010_Project2_Team3_proposal_writeup.pdf)
+- [github.md](github.md)
+- [precipitation_map.html](precipitation_map.html)
 
-Current repository structure:
+## Repository Layout
 
 ```text
 COMP4010-Project-2/
+|-- app_refactored.py
+|-- app.py
+|-- README.md
+|-- PROJECT_PROGRESS_UPDATED.md
+|-- requirements.txt
 |-- data/
 |   |-- raw/
-|   |   |-- mekong_province_month_rainfall_1981_2025.csv
-|   |   |-- mekong_province_cropland_2021.csv
-|   |   |-- mekong_province_month_water_1984_2021.csv
-|   |   |-- mekong_province_population_2000_2021.csv
-|   |   |-- mekong_provinces_boundary.geojson
-|   |   |-- mekong_province_month_rainfall_2000_2024.csv        # older/reference file
-|   |   `-- mekong_province_month_rainfall_2020_2024.csv        # older/reference file
-|   |-- processed/
-|   |   |-- province_month_rainfall.csv
-|   |   |-- province_month_water.csv
-|   |   |-- province_exposure.csv
-|   |   `-- province_month_panel.csv
+|   `-- processed/
 |-- scripts/
 |   |-- 02_clean_rainfall.py
 |   |-- 03_clean_water.py
 |   |-- 04_clean_exposure.py
-|   `-- 05_build_panel.py
-|-- app_refactored.py                           # current refactored Shiny dashboard
-|-- app.py                                      # earlier dashboard implementation
-|-- requirements.txt
-|-- COMP4010_Project2_Team3_proposal_writeup.pdf
-|-- wireframe.png
-|-- PROJECT_PROGRESS_UPDATED.md
-|-- github.md
-|-- precipitation_map.html
-`-- README.md
+|   |-- 05_build_panel.py
+|   |-- build_daily_extreme_features.py
+|   `-- merge_daily_features_into_panel.py
+|-- modeling/
+|   |-- ml.md
+|   |-- split_data.py
+|   |-- train_all_models.ipynb
+|   |-- data_splitted/
+|   `-- result/
+|-- context/
+|-- eda_outputs/
+|-- old/
+`-- chun/
 ```
 
-## Key Documentation
+Notes:
 
-### Proposal write-up
+- `app_refactored.py` is the main dashboard entry point.
+- `app.py` is an older dashboard version kept for reference.
+- `chun/` appears to be a local virtual environment.
+- `old/` contains older documentation snapshots.
 
-[COMP4010_Project2_Team3.pdf](COMP4010_Project2_Team3_proposal_writeup.pdf) is the primary proposal document for the project. It defines the project motivation, central question, planned data sources, visualization challenge, and dashboard direction.
-
-### Wireframe
-
-[wireframe.png](wireframe.png) is the current visual reference for the intended dashboard layout. It should be used when aligning implementation decisions with the planned interface and analytical flow.
-
-### Progress tracking
-
-[PROJECT_PROGRESS_UPDATED.md](PROJECT_PROGRESS_UPDATED.md) is the live project log. It records current status, completed milestones, next tasks, blockers, and decisions. Treat it as the source of truth for active project status.
-
-## Data Files
-
-The repository now contains several raw datasets pulled from Google Earth Engine.
+## Data Inventory
 
 ### Raw data
 
-Files in `data/raw/`:
+Main raw files in `data/raw/`:
 
-- `mekong_province_month_rainfall_1981_2025.csv`  
-  Monthly province-level rainfall table derived from CHIRPS Daily rainfall. This is the main rainfall dataset.
+- `mekong_province_month_rainfall_1981_2025.csv`
+- `mekong_province_day_rainfall_1981_2025.csv`
+- `mekong_province_month_water_1984_2021.csv`
+- `mekong_province_cropland_2021.csv`
+- `mekong_province_population_2000_2021.csv`
+- `mekong_provinces_boundary.geojson`
 
-- `mekong_province_month_water_1984_2021.csv`  
-  Monthly province-level surface-water area derived from JRC Global Surface Water Monthly History. This should be treated as **surface-water extent / flood proxy**, not official flood impact.
-
-- `mekong_province_cropland_2021.csv`  
-  Province-level cropland area derived from ESA WorldCover 2021. This is a static agricultural exposure context layer.
-
-- `mekong_province_population_2000_2021.csv`  
-  Province-year population totals derived from WorldPop. This is annual population exposure data.
-
-- `mekong_provinces_boundary.geojson`  
-  Province boundary file for the 13 Vietnamese Mekong Delta provinces, extracted from FAO GAUL.
-
-Older rainfall files may still exist for testing or comparison:
+Older rainfall extracts are still present for reference or comparison:
 
 - `mekong_province_month_rainfall_2000_2024.csv`
 - `mekong_province_month_rainfall_2020_2024.csv`
 
-## Dataset Coverage
+### Coverage summary
 
-| Dataset | File | Time coverage | Granularity | Dashboard role |
-|---|---|---|---|---|
-| CHIRPS rainfall | `mekong_province_month_rainfall_1981_2025.csv` | 1981-2025 | Province-month | Rainfall trend, anomaly, drought proxy |
-| JRC surface water | `mekong_province_month_water_1984_2021.csv` | 1984-03 to 2021-12 | Province-month | Surface-water extent / flood proxy |
-| ESA WorldCover cropland | `mekong_province_cropland_2021.csv` | 2021 | Province | Agricultural exposure context |
-| WorldPop population | `mekong_province_population_2000_2021.csv` | 2000-2021 | Province-year | Population exposure context |
-| FAO GAUL boundary | `mekong_provinces_boundary.geojson` | Static | Province geometry | Map boundary and spatial joins |
+| Dataset | Coverage | Granularity | Current use |
+|---|---|---|---|
+| CHIRPS monthly rainfall | 1981-2025 | Province-month | Rainfall totals, anomaly, z-score |
+| CHIRPS daily rainfall | 1981-2025 | Province-day | Daily extreme and persistence features, ML forecasting |
+| JRC surface water | 1984-2021 | Province-month | Surface-water extent / flood proxy |
+| ESA WorldCover cropland | 2021 | Province | Static exposure context |
+| WorldPop population | 2000-2021 | Province-year | Population exposure context |
+| FAO GAUL boundary | Static | Province geometry | Mapping |
 
-## Coverage Logic
+### Coverage logic
 
-Because the datasets have different time ranges, different dashboard views should use different valid windows:
+Because the layers do not share the same time window, the dashboard should be interpreted with coverage constraints in mind:
 
-- Rainfall-only analysis: `1981-2025`
-- Rainfall + surface-water comparison: `1984-03` to `2021-12`
-- Rainfall + surface-water + population analysis: `2000-2021`
-- Cropland exposure analysis: static 2021 context merged by province
+- rainfall and dryness analysis can use the longest historical range
+- rainfall plus surface-water comparisons are limited by JRC coverage
+- exposure views depend on population year availability and static cropland context
+- ML forecasting uses daily rainfall history only
 
-WorldPop should be merged by `province_name + year`. ESA WorldCover cropland should be merged by `province_name`.
+## Processed Outputs
 
-## Processed Data Outputs
+Main files in `data/processed/`:
 
-The main processed files in `data/processed/` are now built and used by the dashboard:
+- `province_month_rainfall.csv`
+- `province_month_water.csv`
+- `province_exposure.csv`
+- `province_month_panel.csv`
+- `province_month_rainfall_features.csv`
+- `province_month_panel_before_daily_features.csv`
 
-- `province_month_rainfall.csv`  
-  Cleaned rainfall table with rainfall anomaly and z-score.
+Current roles:
 
-- `province_month_water.csv`  
-  Cleaned monthly surface-water table with `water_area_km2` and `water_area_pct`.
+- `province_month_rainfall.csv`: cleaned monthly rainfall with anomaly and z-score
+- `province_month_water.csv`: cleaned surface-water metrics
+- `province_exposure.csv`: population and cropland exposure table
+- `province_month_panel.csv`: main merged dashboard table
+- `province_month_rainfall_features.csv`: monthly features derived from daily rainfall
+- `province_month_panel_before_daily_features.csv`: backup created before daily features were merged into the panel
 
-- `province_exposure.csv`  
-  Combined province-level exposure table from yearly WorldPop population and 2021 ESA WorldCover cropland context.
+The daily-derived monthly features currently include:
 
-- `province_month_panel.csv`  
-  Main dashboard table combining rainfall, water, population, and cropland variables by province-month. The current dashboard computes the composite risk score at runtime from this panel.
+- `rainfall_mm_from_daily`
+- `mean_daily_rainfall`
+- `max_1day_rainfall`
+- `rain_days_count`
+- `dry_days_count`
+- `heavy_rain_days_20mm`
+- `heavy_rain_days_50mm`
+- `max_consecutive_dry_days`
+- `max_consecutive_wet_days`
+- `rain_day_ratio`
+- `dry_day_ratio`
+- `days_observed`
 
-## Combined Risk Score Methodology
+## Processing Pipeline
 
-The dashboard uses a composite `combined_risk_score` to summarize relative water risk by province-month. In the current implementation, `province_month_panel.csv` does not store this column directly, so [app_refactored.py](app_refactored.py) computes it at runtime after loading the panel.
+### Monthly data pipeline
 
-The score is a relative index, not a measured flood probability or official hazard estimate. It combines four normalized components: surface water, high rainfall, drought signal, and exposure.
+The main monthly processing flow is:
 
-### Rainfall anomaly and z-score
+1. `scripts/02_clean_rainfall.py`
+2. `scripts/03_clean_water.py`
+3. `scripts/04_clean_exposure.py`
+4. `scripts/05_build_panel.py`
 
-Rainfall is first converted into a monthly anomaly and z-score in [scripts/02_clean_rainfall.py](scripts/02_clean_rainfall.py).
+Outputs from those scripts feed `data/processed/province_month_panel.csv`.
 
-For each `province_name + month`, the script calculates a long-run monthly climatology:
+### Daily feature pipeline
 
-```text
-monthly_mean = mean rainfall for the same province and calendar month
-monthly_std = standard deviation of rainfall for the same province and calendar month
-```
+Daily rainfall is expanded with:
 
-Then each province-month receives:
+1. `scripts/build_daily_extreme_features.py`
+2. `scripts/merge_daily_features_into_panel.py`
 
-```text
-rainfall_anomaly = rainfall_mm - monthly_mean
-rainfall_zscore = rainfall_anomaly / monthly_std
-```
+This adds the daily-derived monthly indicators into the main panel used by the dashboard.
 
-Positive `rainfall_zscore` values mean wetter-than-normal conditions for that province and month. Negative values mean drier-than-normal conditions. Infinite or missing z-scores are replaced with `0`.
+## Modeling Pipeline
 
-### Component score setup
+The repo now includes a province-level rainfall forecasting workflow in `modeling/`.
 
-Before combining the indicators, the app converts each component to a comparable 0-1 scale using min-max normalization:
+Main components:
 
-```text
-minmax(x) = (x - min(x)) / (max(x) - min(x))
-```
+- `modeling/split_data.py`: splits the full daily rainfall file into one file per province
+- `modeling/train_all_models.ipynb`: trains and exports forecast outputs
+- `modeling/ml.md`: explains the current modeling strategy
+- `modeling/data_splitted/`: per-province daily rainfall history files
+- `modeling/result/`: per-province and combined forecast outputs
 
-If all values are the same, the normalized score is set to `0` to avoid division by zero. Missing values are filled with `0` before normalization. The normalization is applied across the loaded dashboard dataset, so each score should be interpreted as relative to the available province-month records.
+The current forecast design, documented in [modeling/ml.md](modeling/ml.md), uses:
 
-The component scores are:
+- two-stage daily forecasting
+- recent-weighted training
+- recursive daily prediction
+- XGBoost for rain occurrence and rainfall amount
 
-```text
-rainfall_score = minmax(max(rainfall_zscore, 0))
-```
+Current forecast output files include:
 
-This keeps only unusually wet conditions. Normal or drier-than-normal months do not increase the high-rainfall component.
-
-```text
-water_score = minmax(water_area_pct)
-```
-
-This uses surface-water percentage as the flood-proxy component. It is not z-scored in the current app; it is normalized directly because `water_area_pct` is already a province-area-adjusted measure.
-
-```text
-drought_score = minmax(max(-rainfall_zscore, 0))
-```
-
-This converts unusually dry rainfall anomalies into a positive drought signal. A strongly negative rainfall z-score becomes a high drought component.
-
-```text
-exposure_score =
-    0.60 * minmax(population_total)
-  + 0.40 * minmax(cropland_area_km2)
-```
-
-Exposure combines people and agricultural land. Population receives the larger share because direct human exposure is the primary planning concern, while cropland is still included as an economic and livelihood exposure layer.
-
-### Final combined score
-
-The final score is a weighted average:
-
-```text
-combined_risk_score =
-    0.35 * water_score
-  + 0.25 * rainfall_score
-  + 0.25 * drought_score
-  + 0.15 * exposure_score
-```
-
-The weights reflect the dashboard's purpose as a water-risk screening tool:
-
-- `water_score` receives the largest weight (`0.35`) because observed surface-water extent is the closest available proxy for actual inundation conditions.
-- `rainfall_score` receives `0.25` because unusually high rainfall is a direct driver of flood risk, but rainfall alone does not confirm flooding.
-- `drought_score` receives `0.25` so the same dashboard can flag unusually dry conditions, not only flood-like conditions.
-- `exposure_score` receives `0.15` because population and cropland describe who or what may be affected, but they do not by themselves indicate that a water hazard is occurring.
-
-These weights are heuristic and should be treated as transparent dashboard assumptions. They are useful for comparison and prioritization, but they should be recalibrated if validated flood-impact, drought-impact, or damage data becomes available.
-
-## Data-Cleaning Scripts
-
-The processing pipeline is implemented in `scripts/`:
-
-- [scripts/02_clean_rainfall.py](scripts/02_clean_rainfall.py)
-- [scripts/03_clean_water.py](scripts/03_clean_water.py)
-- [scripts/04_clean_exposure.py](scripts/04_clean_exposure.py)
-- [scripts/05_build_panel.py](scripts/05_build_panel.py)
-
-Current behavior:
-
-- `02_clean_rainfall.py` reads CHIRPS rainfall, standardizes the rainfall column, converts date fields, computes province-month climatology, calculates rainfall anomaly and rainfall z-score, and writes `data/processed/province_month_rainfall.csv`.
-- `03_clean_water.py` reads JRC surface-water output, keeps monthly water area and province-area-normalized water percentage, and writes `data/processed/province_month_water.csv`.
-- `04_clean_exposure.py` combines WorldPop population and ESA WorldCover cropland exposure by province/year and writes `data/processed/province_exposure.csv`.
-- `05_build_panel.py` merges rainfall, water, and exposure into the dashboard panel at `data/processed/province_month_panel.csv`.
+- `modeling/result/all_provinces_forecast_next_12_months.csv`
+- one `*_forecast_next_12_months.csv` file for each province
 
 ## Dashboard
 
-The Shiny dashboard is implemented. The current refactored dashboard entry point is:
+The main dashboard is [app_refactored.py](app_refactored.py).
 
-```text
-app_refactored.py
-```
+Current dashboard tabs:
 
-It includes:
+- `Mekong Summary`
+- `Rainfall & Dryness`
+- `Surface Water`
+- `Province Comparison`
+- `ML Prediction`
+- `Methodology / Caveats`
 
-- global filters: year, month, province, metric selector
-- interactive Mekong Delta province map
-- KPI cards for key water-risk indicators
-- province ranking chart
-- rainfall trend chart
-- risk component breakdown
-- anomaly heatmap
-- province comparison chart
+Current dashboard capabilities:
 
-The repository also contains `app.py`, an earlier dashboard implementation kept for reference.
+- global filters for year, month, province, top-N, and metric
+- province choropleth map
+- KPI cards
+- rainfall anomaly ranking
+- dryness ranking
+- rainfall seasonality and year-vs-normal trend views
+- rainfall anomaly heatmap
+- surface-water trend and rainfall-vs-water scatter
+- province comparison and timeline views
+- daily rainfall history plus forecast preview for each province
+
+Important interpretation notes:
+
+- the dashboard is exploratory, not operational
+- JRC water data should be treated as surface-water extent or flood proxy, not flood impact
+- the `ML Prediction` tab is a model preview, not an official advisory
 
 ## Dependencies
 
-Runtime dependencies are listed in [requirements.txt](requirements.txt):
+Current dependencies in [requirements.txt](requirements.txt):
 
-```text
-pandas
-shiny
-plotly
-geopandas
-htmltools
-shinywidgets
-```
+- `pandas`
+- `shiny`
+- `plotly`
+- `geopandas`
+- `htmltools`
+- `shinywidgets`
+- `scikit-learn`
+- `xgboost`
+- `jupyter`
 
 ## Useful Commands
 
@@ -274,21 +276,27 @@ shinywidgets
 pip install -r requirements.txt
 ```
 
-### Rebuild rainfall data
+### Rebuild the monthly panel
 
 ```bash
 python scripts/02_clean_rainfall.py
-```
-
-### Rebuild all processed data
-
-```bash
 python scripts/03_clean_water.py
 python scripts/04_clean_exposure.py
 python scripts/05_build_panel.py
 ```
 
-Run `02_clean_rainfall.py` first if the rainfall source file has changed.
+### Rebuild daily-derived monthly features
+
+```bash
+python scripts/build_daily_extreme_features.py
+python scripts/merge_daily_features_into_panel.py
+```
+
+### Split daily rainfall by province
+
+```bash
+python modeling/split_data.py
+```
 
 ### Run the dashboard
 
@@ -296,36 +304,19 @@ Run `02_clean_rainfall.py` first if the rainfall source file has changed.
 shiny run --reload app_refactored.py
 ```
 
-### Run Earth Engine test
+## Current Status Summary
 
-```bash
-python test.py
-```
+The repo is currently in a strong implementation state:
 
-## Current Repo Status
-
-- Proposal and wireframe assets are available.
-- Raw data collection from Google Earth Engine is substantially complete.
-- Boundary, rainfall, surface-water, cropland, and population data are now available.
-- Processed rainfall, water, exposure, and merged panel datasets are available in `data/processed/`.
-- The Python Shiny dashboard is implemented in `app_refactored.py`.
-- Dependency management is available through `requirements.txt`.
-- Remaining work is mainly final polish, submission materials, and optional calibration or validation of the composite risk score.
-
-## Recommended Reading Order
-
-1. [COMP4010_Project2_Team3_proposal_writeup.pdf](COMP4010_Project2_Team3_proposal_writeup.pdf)
-2. [wireframe.png](wireframe.png)
-3. [PROJECT_PROGRESS_UPDATED.md](PROJECT_PROGRESS_UPDATED.md)
-4. `data/raw/`
-5. [scripts/02_clean_rainfall.py](scripts/02_clean_rainfall.py)
-6. [scripts/05_build_panel.py](scripts/05_build_panel.py)
-7. [app_refactored.py](app_refactored.py)
-8. `data/processed/`
+- data collection is done for the core layers
+- monthly and daily processing outputs exist
+- the main Shiny dashboard is implemented
+- forecast files already exist and are wired into the dashboard
+- the remaining work is mostly polish, validation, submission packaging, and any final analytical framing decisions
 
 ## Notes
 
-- The project should avoid calling JRC water data direct flood impact unless validated with event data.
-- ESA WorldCover is a 2021 static land-cover snapshot and should not be used to claim historical cropland trends.
-- WorldPop is annual, so population should be merged by province and year, not by month.
-- `PROJECT_PROGRESS_UPDATED.md` should be updated whenever a new processed file, dashboard feature, or deployment milestone is completed.
+- Keep `PROJECT_PROGRESS_UPDATED.md` aligned with any meaningful repo milestone.
+- Avoid describing the dashboard as an official flood prediction tool.
+- Avoid implying that static cropland or annual population data provide monthly hazard measurements.
+- If the daily rainfall source changes, regenerate the daily-derived monthly features and any affected modeling outputs.

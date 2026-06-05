@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import json
 import numpy as np
 import logging
+from pathlib import Path
 
 # Configure logger
 logging.basicConfig(level=logging.INFO)
@@ -13,11 +14,15 @@ logger = logging.getLogger("MekongFloodLens")
 
 
 # ==========================================================
-# Data loading  (kept robust — tolerant of missing columns)
+# Data loading  (kept robust â€” tolerant of missing columns)
 # ==========================================================
 
 PANEL_PATH = "data/processed/province_month_panel.csv"
 BOUNDARY_PATH = "data/raw/mekong_provinces_boundary.geojson"
+RAW_DAILY_PATH = "data/raw/mekong_province_day_rainfall_1981_2025.csv"
+FORECAST_DAILY_PATH = "modeling/result/all_provinces_forecast_next_12_months.csv"
+SPLIT_HISTORY_DIR = Path("modeling/data_splitted")
+SPLIT_FORECAST_DIR = Path("modeling/result")
 
 df = pd.read_csv(PANEL_PATH)
 df["year"] = pd.to_numeric(df["year"], errors="coerce").astype(int)
@@ -61,7 +66,7 @@ for col, default in default_columns.items():
 for col in default_columns:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# Long-run monthly climatology (per province / calendar month) — used as the
+# Long-run monthly climatology (per province / calendar month) â€” used as the
 # "normal" baseline for the seasonal and trend views.
 if df["monthly_mean"].isna().all():
     df["monthly_mean"] = df.groupby(["province_name", "month"])["rainfall_mm"].transform("mean")
@@ -76,7 +81,7 @@ def minmax(series):
 
 
 # ----------------------------------------------------------
-# Dryness index (PROXY) — built only from rainfall columns.
+# Dryness index (PROXY) â€” built only from rainfall columns.
 # Blends a rainfall deficit signal (negative anomaly z-score) with the share
 # of dry days observed in the month. It is a *relative* indicator across the
 # panel, NOT an official drought classification.
@@ -94,6 +99,78 @@ df["water_area_km2_raw"] = df["water_area_km2"]
 df["water_area_pct_raw"] = df["water_area_pct"]
 
 df = df.fillna(0)
+
+daily_rain_df = pd.read_csv(RAW_DAILY_PATH)
+daily_rain_df["date"] = pd.to_datetime(daily_rain_df["date"], errors="coerce")
+daily_rain_df["year"] = pd.to_numeric(daily_rain_df["year"], errors="coerce").astype(int)
+daily_rain_df["month"] = pd.to_numeric(daily_rain_df["month"], errors="coerce").astype(int)
+daily_rain_df["day"] = pd.to_numeric(daily_rain_df["day"], errors="coerce").astype(int)
+daily_rain_df["rainfall_mm"] = pd.to_numeric(daily_rain_df["rainfall_mm"], errors="coerce").fillna(0)
+daily_rain_df["province_name"] = daily_rain_df["province_name"].astype(str).str.strip()
+
+if Path(FORECAST_DAILY_PATH).exists():
+    forecast_daily_df = pd.read_csv(FORECAST_DAILY_PATH)
+    forecast_daily_df["date"] = pd.to_datetime(forecast_daily_df["date"], errors="coerce")
+    forecast_daily_df["year"] = pd.to_numeric(forecast_daily_df["year"], errors="coerce").astype(int)
+    forecast_daily_df["month"] = pd.to_numeric(forecast_daily_df["month"], errors="coerce").astype(int)
+    forecast_daily_df["day"] = pd.to_numeric(forecast_daily_df["day"], errors="coerce").astype(int)
+    forecast_daily_df["predicted_rainfall_mm"] = pd.to_numeric(
+        forecast_daily_df["predicted_rainfall_mm"], errors="coerce"
+    ).fillna(0)
+    forecast_daily_df["province_name"] = forecast_daily_df["province_name"].astype(str).str.strip()
+else:
+    forecast_daily_df = pd.DataFrame(
+        columns=["province_name", "date", "year", "month", "day", "predicted_rainfall_mm", "model_name"]
+    )
+
+
+def _load_split_daily_history():
+    history_map = {}
+    for file_path in sorted(SPLIT_HISTORY_DIR.glob("*_rainfall_1981_2025.csv")):
+        province_df = pd.read_csv(file_path)
+        if province_df.empty:
+            continue
+        province_df["date"] = pd.to_datetime(province_df["date"], errors="coerce")
+        province_df["year"] = pd.to_numeric(province_df["year"], errors="coerce").astype(int)
+        province_df["month"] = pd.to_numeric(province_df["month"], errors="coerce").astype(int)
+        province_df["day"] = pd.to_numeric(province_df["day"], errors="coerce").astype(int)
+        province_df["rainfall_mm"] = pd.to_numeric(province_df["rainfall_mm"], errors="coerce").fillna(0)
+        province_df["province_name"] = province_df["province_name"].astype(str).str.strip()
+        history_map[province_df["province_name"].iloc[0]] = (
+            province_df[["province_name", "date", "year", "month", "day", "rainfall_mm"]]
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+    return history_map
+
+
+def _load_split_daily_forecasts():
+    forecast_map = {}
+    for file_path in sorted(SPLIT_FORECAST_DIR.glob("*_forecast_next_12_months.csv")):
+        if file_path.name == "all_provinces_forecast_next_12_months.csv":
+            continue
+        province_df = pd.read_csv(file_path)
+        if province_df.empty:
+            continue
+        province_df["date"] = pd.to_datetime(province_df["date"], errors="coerce")
+        province_df["year"] = pd.to_numeric(province_df["year"], errors="coerce").astype(int)
+        province_df["month"] = pd.to_numeric(province_df["month"], errors="coerce").astype(int)
+        province_df["day"] = pd.to_numeric(province_df["day"], errors="coerce").astype(int)
+        province_df["predicted_rainfall_mm"] = pd.to_numeric(
+            province_df["predicted_rainfall_mm"], errors="coerce"
+        ).fillna(0)
+        province_df["province_name"] = province_df["province_name"].astype(str).str.strip()
+        forecast_map[province_df["province_name"].iloc[0]] = (
+            province_df[["province_name", "date", "year", "month", "day", "predicted_rainfall_mm", "model_name"]]
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+    return forecast_map
+
+
+split_daily_history = _load_split_daily_history()
+split_daily_forecasts = _load_split_daily_forecasts()
+forecast_provinces = sorted(set(split_daily_history.keys()) & set(split_daily_forecasts.keys()))
 
 with open(BOUNDARY_PATH, encoding="utf-8") as f:
     geojson_data = json.load(f)
@@ -125,6 +202,8 @@ map_label_df = pd.DataFrame(map_label_points)
 
 provinces = sorted(df["province_name"].dropna().unique().tolist())
 years = sorted(df["year"].dropna().unique().tolist())
+daily_years = sorted(daily_rain_df["year"].dropna().unique().tolist())
+default_history_start_year = max(min(daily_years), max(daily_years) - 9) if daily_years else min(years)
 WATER_YEARS = sorted(df.loc[df["has_water"], "year"].unique().tolist())
 
 MONTH_NAMES = [
@@ -134,7 +213,7 @@ MONTH_NAMES = [
 
 
 # ==========================================================
-# Metric registry — rainfall / dryness / surface-water focused.
+# Metric registry â€” rainfall / dryness / surface-water focused.
 # Combined risk score is intentionally NOT offered as a story metric.
 # ==========================================================
 
@@ -145,7 +224,7 @@ metric_options = {
     "dry_index": "Dryness index (proxy)",
     "dry_day_ratio": "Dry-day share",
     "max_consecutive_dry_days": "Longest dry spell (days)",
-    "water_area_km2": "Surface water area (km²)",
+    "water_area_km2": "Surface water area (kmÂ²)",
     "water_area_pct": "Surface water (%)",
 }
 
@@ -256,7 +335,7 @@ def format_metric_value(value, metric):
     if metric == "rainfall_zscore":
         return f"{value:+,.2f}"
     if metric == "water_area_km2":
-        return f"{value:,.1f} km²"
+        return f"{value:,.1f} kmÂ²"
     if metric == "water_area_pct":
         return f"{value:,.2f}%"
     if metric == "dry_index":
@@ -265,7 +344,7 @@ def format_metric_value(value, metric):
 
 
 # ==========================================================
-# Narrative helpers — rainfall / dryness / water story
+# Narrative helpers â€” rainfall / dryness / water story
 # (No combined-risk language.)
 # ==========================================================
 
@@ -278,7 +357,7 @@ def summary_bullets(province, year, month):
     mname = month_label(month)
     mdf = df[(df["year"] == year) & (df["month"] == month)].copy()
     if mdf.empty:
-        return ["No records for this period — try a different year or month."]
+        return ["No records for this period â€” try a different year or month."]
 
     wettest = mdf.sort_values("rainfall_mm", ascending=False).iloc[0]
     driest = mdf.sort_values("dry_index", ascending=False).iloc[0]
@@ -296,7 +375,7 @@ def summary_bullets(province, year, month):
             top_water = water_df.sort_values("water_area_km2", ascending=False).iloc[0]
             bullets.append(
                 f"Mapped surface water totalled "
-                f"<b>{water_df['water_area_km2'].sum():,.0f} km²</b>, led by "
+                f"<b>{water_df['water_area_km2'].sum():,.0f} kmÂ²</b>, led by "
                 f"<b>{top_water['province_name']}</b>."
             )
         bullets.append("Pick a single province in the sidebar to follow its own story over time.")
@@ -326,7 +405,7 @@ def summary_bullets(province, year, month):
     ]
     if row["has_water"] and row["water_area_km2"] > 0:
         bullets.append(
-            f"Observed surface-water extent: <b>{row['water_area_km2']:,.0f} km²</b> "
+            f"Observed surface-water extent: <b>{row['water_area_km2']:,.0f} kmÂ²</b> "
             "(satellite proxy)."
         )
     return bullets
@@ -475,6 +554,19 @@ html, body, .bslib-page-sidebar {
 .kpi-value { font-size: 1.55rem; font-weight: 850; line-height: 1.1; margin-top: 6px; color: #fff; }
 .kpi-note { font-size: 0.74rem; opacity: 0.85; color: #f1f5f9; }
 .duo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.forecast-control-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+    gap: 16px;
+    margin-bottom: 12px;
+    align-items: end;
+}
+.forecast-note {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 0.84rem;
+    line-height: 1.5;
+}
 .caveat-box {
     color: #fde68a;
     background: rgba(245, 158, 11, 0.10);
@@ -507,11 +599,13 @@ html, body, .bslib-page-sidebar {
     color: #f8fafc !important;
     border-radius: 10px !important;
 }
+.method-card summary::before { content: "â–¸ "; color: var(--accent); }
+.method-card details[open] summary::before { content: "â–¾ "; }
 .irs--shiny .irs-bar, .irs--shiny .irs-single { background: #38bdf8 !important; border-color: #38bdf8 !important; }
 .irs--shiny .irs-handle { border-color: #38bdf8 !important; }
 .irs--shiny .irs-min, .irs--shiny .irs-max, .irs--shiny .irs-grid-text { color: #9fb0c7 !important; }
 @media (max-width: 1100px) {
-    .kpi-grid, .duo-grid { grid-template-columns: 1fr; }
+    .kpi-grid, .duo-grid, .forecast-control-grid { grid-template-columns: 1fr; }
 }
 """
 
@@ -571,16 +665,17 @@ app_ui = ui.page_sidebar(
         ui.div(
             "A data-storytelling view of the Vietnamese Mekong Delta: monthly "
             "rainfall, dry/wet anomalies, and observed surface-water extent across "
-            "13 provinces. This is an exploratory, observational dashboard — not an "
+            "13 provinces. This is an exploratory, observational dashboard â€” not an "
             "official flood-prediction system.",
             class_="subtitle",
         ),
         class_="app-header",
+
     ),
     # ---- Tabs ----------------------------------------------------
     ui.navset_card_tab(
         # ============================================================
-        # TAB 1 — MEKONG SUMMARY
+        # TAB 1 â€” MEKONG SUMMARY
         # ============================================================
         ui.nav_panel(
             "Mekong Summary",
@@ -588,11 +683,11 @@ app_ui = ui.page_sidebar(
                 ui.HTML(
                     "<b>What is happening across the Mekong provinces?</b> "
                     "This dashboard tracks three observed signals from public satellite "
-                    "and gauge-derived data — <b>how much it rained</b>, "
+                    "and gauge-derived data â€” <b>how much it rained</b>, "
                     "<b>how dry or wet that is versus normal</b>, and "
                     "<b>how much surface water</b> was mapped. Use the sidebar to pick a "
                     "period and province, then walk the tabs left to right: "
-                    "Rainfall &amp; Dryness → Surface Water → Province Comparison."
+                    "Rainfall &amp; Dryness â†’ Surface Water â†’ Province Comparison."
                 ),
                 class_="lead-note",
             ),
@@ -609,7 +704,7 @@ app_ui = ui.page_sidebar(
             ),
             ui.div(
                 ui.div(
-                    ui.div("Delta map — focus metric", class_="card-title"),
+                    ui.div("Delta map â€” focus metric", class_="card-title"),
                     ui.div("Color shows the sidebar focus metric for each province in the selected month.",
                            class_="card-subtitle"),
                     output_widget("map_plot", height="520px", width="100%"),
@@ -626,17 +721,17 @@ app_ui = ui.page_sidebar(
             ui.div(
                 ui.HTML(
                     "<b>Scope &amp; data.</b> Monthly panel of 13 Mekong Delta provinces, "
-                    f"{min(years)}–{max(years)}. Rainfall is CHIRPS-derived (monthly totals plus "
+                    f"{min(years)}â€“{max(years)}. Rainfall is CHIRPS-derived (monthly totals plus "
                     "daily-derived indicators such as dry-day share and dry spells). Surface water "
                     "is JRC/satellite water-extent, available "
-                    f"{min(WATER_YEARS)}–{max(WATER_YEARS)}. See the "
+                    f"{min(WATER_YEARS)}â€“{max(WATER_YEARS)}. See the "
                     "<b>Methodology / Caveats</b> tab for sources and limitations."
                 ),
                 class_="lead-note",
             ),
         ),
         # ============================================================
-        # TAB 2 — RAINFALL & DRYNESS
+        # TAB 2 â€” RAINFALL & DRYNESS
         # ============================================================
         ui.nav_panel(
             "Rainfall & Dryness",
@@ -645,7 +740,7 @@ app_ui = ui.page_sidebar(
                     "<b>Which provinces show unusual rainfall or dry conditions?</b> "
                     "A positive rainfall anomaly means <b>wetter than the long-run normal</b>; "
                     "a negative one means <b>drier</b>. The <b>dryness index</b> is a relative "
-                    "proxy (0–1) that blends a rainfall deficit with the share of dry days — "
+                    "proxy (0â€“1) that blends a rainfall deficit with the share of dry days â€” "
                     "higher means drier. It is a proxy, not an official drought class."
                 ),
                 class_="lead-note",
@@ -666,7 +761,7 @@ app_ui = ui.page_sidebar(
             ui.div(
                 chart_card(
                     "Seasonal rainfall pattern (observed climatology)",
-                    "Average rainfall by calendar month across all years — the selected month is highlighted. "
+                    "Average rainfall by calendar month across all years â€” the selected month is highlighted. "
                     "This is the historical cyclic pattern, NOT a forecast.",
                     "seasonality_plot", 340,
                 ),
@@ -680,12 +775,12 @@ app_ui = ui.page_sidebar(
             ),
             chart_card(
                 "Rainfall anomaly heatmap",
-                "Month × province rainfall z-scores for the selected year. Red = wetter than normal, blue = drier.",
+                "Month Ă— province rainfall z-scores for the selected year. Red = wetter than normal, blue = drier.",
                 "anomaly_heatmap", 360,
             ),
         ),
         # ============================================================
-        # TAB 3 — SURFACE WATER
+        # TAB 3 â€” SURFACE WATER
         # ============================================================
         ui.nav_panel(
             "Surface Water",
@@ -693,7 +788,7 @@ app_ui = ui.page_sidebar(
                 ui.HTML(
                     "<b>How does rainfall relate to observed surface water?</b> "
                     "Surface-water extent is a satellite observation of how much land is "
-                    "covered by water — a useful wet/flood proxy, but not a measure of flood "
+                    "covered by water â€” a useful wet/flood proxy, but not a measure of flood "
                     "impact. Wet rainfall anomalies often (not always) line up with larger "
                     "water extent."
                 ),
@@ -722,7 +817,7 @@ app_ui = ui.page_sidebar(
             ),
         ),
         # ============================================================
-        # TAB 4 — PROVINCE COMPARISON
+        # TAB 4 â€” PROVINCE COMPARISON
         # ============================================================
         ui.nav_panel(
             "Province Comparison",
@@ -736,7 +831,7 @@ app_ui = ui.page_sidebar(
             ),
             ui.div(
                 chart_card(
-                    "Top-N province ranking — focus metric",
+                    "Top-N province ranking â€” focus metric",
                     "Provinces ranked by the selected focus metric this month. Selected province highlighted.",
                     "ranking_plot", 380,
                 ),
@@ -748,13 +843,61 @@ app_ui = ui.page_sidebar(
                 class_="duo-grid",
             ),
             chart_card(
-                "Selected province timeline — rainfall & surface water",
+                "Selected province timeline â€” rainfall & surface water",
                 "Full monthly history for the selected province. Pick a single province in the sidebar to populate this.",
                 "province_timeline_plot", 360,
             ),
         ),
         # ============================================================
-        # TAB 5 — METHODOLOGY / CAVEATS
+        # TAB 5 - ML PREDICTION
+        # ============================================================
+        ui.nav_panel(
+            "ML Prediction",
+            ui.div(
+                ui.HTML(
+                    "<b>Rainfall forecast preview.</b> This tab links observed daily rainfall "
+                    "history with recursive XGBoost forecast outputs. Use it as an exploratory "
+                    "model preview only; it is not an official flood warning, impact forecast, "
+                    "or rainfall advisory."
+                ),
+                class_="lead-note",
+            ),
+            ui.div(
+                ui.input_slider(
+                    "history_year_range",
+                    "Historical years to display",
+                    min(daily_years),
+                    max(daily_years),
+                    value=(default_history_start_year, max(daily_years)),
+                ),
+                ui.input_slider(
+                    "forecast_horizon_months",
+                    "Prediction horizon (months)",
+                    1,
+                    12,
+                    12,
+                ),
+                ui.input_select(
+                    "forecast_province",
+                    "Prediction province",
+                    choices=forecast_provinces,
+                    selected=forecast_provinces[0] if forecast_provinces else None,
+                ),
+                class_="forecast-control-grid",
+            ),
+            ui.div(
+                ui.div("Daily rainfall history and XGBoost forecast", class_="card-title"),
+                ui.div(
+                    "Solid line shows observed daily rainfall; dashed line shows recursive forecast values.",
+                    class_="card-subtitle",
+                ),
+                output_widget("rainfall_forecast_plot", height="420px"),
+                ui.output_ui("forecast_window_note"),
+                class_="chart-card",
+            ),
+        ),
+        # ============================================================
+        # TAB 6 - METHODOLOGY / CAVEATS
         # ============================================================
         ui.nav_panel(
             "Methodology / Caveats",
@@ -765,33 +908,33 @@ app_ui = ui.page_sidebar(
                       <h4>What this dashboard is</h4>
                       <p>An <b>observational, exploratory</b> view of rainfall, dry/wet anomalies,
                       and surface-water extent across 13 Mekong Delta provinces. It helps you spot
-                      where conditions are unusual and how provinces differ — nothing more.</p>
+                      where conditions are unusual and how provinces differ â€” nothing more.</p>
 
                       <h4>Data sources</h4>
                       <ul>
-                        <li><b>Rainfall</b> — CHIRPS precipitation aggregated to province-month, with
+                        <li><b>Rainfall</b> â€” CHIRPS precipitation aggregated to province-month, with
                         daily-derived features (max 1-day rainfall, rainy/dry day counts, heavy-rain
                         days, longest dry/wet spells, dry-day share).</li>
-                        <li><b>Rainfall anomaly &amp; z-score</b> — deviation of monthly rainfall from
+                        <li><b>Rainfall anomaly &amp; z-score</b> â€” deviation of monthly rainfall from
                         each province's long-run mean for that calendar month.</li>
-                        <li><b>Surface water</b> — satellite-mapped water extent (km² and % of province
-                        area), available 1984–2021.</li>
-                        <li><b>Boundaries</b> — province polygons from the admin-1 GeoJSON.</li>
+                        <li><b>Surface water</b> â€” satellite-mapped water extent (kmÂ² and % of province
+                        area), available 1984â€“2021.</li>
+                        <li><b>Boundaries</b> â€” province polygons from the admin-1 GeoJSON.</li>
                       </ul>
 
                       <h4>Processed / derived features</h4>
                       <ul>
-                        <li><code>rainfall_anomaly</code> = monthly rainfall − long-run monthly mean.</li>
+                        <li><code>rainfall_anomaly</code> = monthly rainfall âˆ’ long-run monthly mean.</li>
                         <li><code>rainfall_zscore</code> = standardized anomaly per province &amp; month.</li>
-                        <li><code>dry_index</code> (proxy) = ½·(scaled rainfall deficit) + ½·(dry-day share),
-                        scaled 0–1 <i>relative to the whole panel</i>. Higher = drier.</li>
+                        <li><code>dry_index</code> (proxy) = Â½Â·(scaled rainfall deficit) + Â½Â·(dry-day share),
+                        scaled 0â€“1 <i>relative to the whole panel</i>. Higher = drier.</li>
                       </ul>
                     </div>
                     """
                 ),
                 ui.div(
                     ui.HTML(
-                        "⚠ <b>Caveats.</b> Surface water is a satellite <b>proxy</b> for wet conditions — "
+                        "â  <b>Caveats.</b> Surface water is a satellite <b>proxy</b> for wet conditions â€” "
                         "it is <b>not</b> official flood-impact or flood-probability data. The dryness "
                         "index is a <b>relative proxy</b> across the panel, not an official drought "
                         "classification. Do not read any value here as an official flood or drought "
@@ -801,11 +944,11 @@ app_ui = ui.page_sidebar(
                 ),
                 ui.div(
                     ui.HTML(
-                        "🔭 <b>Future work — modeling &amp; prediction (not implemented).</b> "
-                        "Rainfall forecasting and explicit cyclic-pattern modeling are <b>not finalized</b> "
-                        "and are intentionally left out of this dashboard. Once the modeling component is "
-                        "ready, a prediction tab can be added here. The seasonal chart shows "
-                        "<b>observed historical climatology only</b> — it is not a forecast."
+                        "<b>Modeling preview.</b> The <b>ML Prediction</b> tab shows recursive "
+                        "XGBoost rainfall forecast outputs alongside observed daily rainfall history. "
+                        "Treat this as exploratory model output, not an official flood warning, "
+                        "impact forecast, or rainfall advisory. The seasonal chart remains "
+                        "<b>observed historical climatology only</b> - it is not a forecast."
                     ),
                     class_="future-box",
                 ),
@@ -874,6 +1017,37 @@ def highlight_colors(names, selected_p, base, hi=None):
     ]
 
 
+def selected_daily_history_df(input):
+    selected_years = input.history_year_range()
+    start_year = int(selected_years[0])
+    end_year = int(selected_years[1])
+    p = input.forecast_province()
+    province_df = split_daily_history.get(p, pd.DataFrame())
+    if province_df.empty:
+        return province_df.copy()
+    return (
+        province_df[(province_df["year"] >= start_year) & (province_df["year"] <= end_year)][["date", "rainfall_mm"]]
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+
+def selected_daily_forecast_df(input):
+    p = input.forecast_province()
+    horizon_months = int(input.forecast_horizon_months())
+    d = split_daily_forecasts.get(p, pd.DataFrame()).copy()
+
+    if d.empty:
+        return d
+
+    forecast_start = pd.Timestamp(d["date"].min())
+    forecast_end = min(
+        pd.Timestamp(d["date"].max()),
+        forecast_start + pd.DateOffset(months=horizon_months) - pd.Timedelta(days=1),
+    )
+    return d[(d["date"] >= forecast_start) & (d["date"] <= forecast_end)].copy()
+
+
 # ==========================================================
 # Server
 # ==========================================================
@@ -883,7 +1057,7 @@ def server(input, output, session):
     @reactive.effect
     def _log_filters():
         logger.info(
-            f"Filters → Province={input.province()}, Year={input.year()}, "
+            f"Filters â†’ Province={input.province()}, Year={input.year()}, "
             f"Month={input.month()}, Metric={input.metric()}, TopK={input.topk()}"
         )
 
@@ -903,7 +1077,7 @@ def server(input, output, session):
         d = d[d["has_water"]]
         if d.empty:
             return ui.div("No coverage", class_="kpi-value")
-        return ui.div(f"{d['water_area_km2'].sum():,.0f} km²", class_="kpi-value")
+        return ui.div(f"{d['water_area_km2'].sum():,.0f} kmÂ²", class_="kpi-value")
 
     @output
     @render.ui
@@ -1024,7 +1198,7 @@ def server(input, output, session):
         fig.add_vline(x=0, line_dash="dot", line_color=PALETTE["muted"])
         apply_dark_layout(fig, 360)
         fig.update_layout(margin=dict(l=5, r=45, t=5, b=38))
-        fig.update_xaxes(title="Rainfall anomaly (mm) — red wetter, blue drier")
+        fig.update_xaxes(title="Rainfall anomaly (mm) â€” red wetter, blue drier")
         fig.update_yaxes(showgrid=False)
         return fig
 
@@ -1044,7 +1218,7 @@ def server(input, output, session):
         ))
         apply_dark_layout(fig, 360)
         fig.update_layout(margin=dict(l=5, r=45, t=5, b=38))
-        fig.update_xaxes(title="Dryness index (proxy, 0–1) — higher = drier", range=[0, 1.05])
+        fig.update_xaxes(title="Dryness index (proxy, 0â€“1) â€” higher = drier", range=[0, 1.05])
         fig.update_yaxes(showgrid=False)
         return fig
 
@@ -1130,6 +1304,81 @@ def server(input, output, session):
         )
         return fig
 
+    # ---------------- TAB 5: ML prediction ----------------
+    @output
+    @render_widget
+    def rainfall_forecast_plot():
+        history = selected_daily_history_df(input)
+        forecast = selected_daily_forecast_df(input)
+        if history.empty and forecast.empty:
+            return empty_fig(420, "No historical or forecast rainfall data available")
+
+        selected_name = input.forecast_province()
+        fig = go.Figure()
+
+        if not history.empty:
+            fig.add_trace(go.Scatter(
+                x=history["date"],
+                y=history["rainfall_mm"],
+                mode="lines",
+                name=f"{selected_name} history",
+                line=dict(color=PALETTE["accent"], width=1.8),
+                hovertemplate="Date: %{x|%Y-%m-%d}<br>Observed rainfall: %{y:,.1f} mm<extra></extra>",
+            ))
+
+        if not forecast.empty:
+            fig.add_trace(go.Scatter(
+                x=forecast["date"],
+                y=forecast["predicted_rainfall_mm"],
+                mode="lines",
+                name=f"{selected_name} forecast",
+                line=dict(color=PALETTE["amber"], width=2.5, dash="dash"),
+                hovertemplate="Date: %{x|%Y-%m-%d}<br>Predicted rainfall: %{y:,.1f} mm<extra></extra>",
+            ))
+            forecast_start = pd.Timestamp(forecast["date"].min())
+            forecast_end = pd.Timestamp(forecast["date"].max())
+            fig.add_vline(x=forecast_start, line_dash="dot", line_color=PALETTE["amber"])
+            fig.add_vrect(
+                x0=forecast_start,
+                x1=forecast_end,
+                fillcolor="rgba(245, 158, 11, 0.08)",
+                line_width=0,
+                layer="below",
+            )
+
+        apply_dark_layout(fig, 420, legend=True)
+        fig.update_yaxes(title="Daily rainfall (mm)")
+        fig.update_xaxes(title="", rangeslider=dict(visible=True), type="date")
+        return fig
+
+    @output
+    @render.ui
+    def forecast_window_note():
+        history = selected_daily_history_df(input)
+        forecast = selected_daily_forecast_df(input)
+        history_text = "No historical slice selected."
+        forecast_text = "No forecast file found."
+
+        if not history.empty:
+            history_text = (
+                f"Historical window: <b>{history['date'].min():%Y-%m-%d}</b> to "
+                f"<b>{history['date'].max():%Y-%m-%d}</b>."
+            )
+        if not forecast.empty:
+            forecast_text = (
+                f"Forecast window: <b>{forecast['date'].min():%Y-%m-%d}</b> to "
+                f"<b>{forecast['date'].max():%Y-%m-%d}</b> "
+                f"({int(input.forecast_horizon_months())} month(s) ahead)."
+            )
+
+        return ui.div(
+            ui.HTML(
+                f"{history_text} {forecast_text} "
+                "Observed data comes from the raw daily rainfall file; future values come from the recursive XGBoost outputs in modeling/result. This preview is not an official warning or advisory."
+            ),
+            class_="forecast-note",
+        )
+
     # ---------------- TAB 3: surface water ----------------
     @output
     @render_widget
@@ -1159,7 +1408,7 @@ def server(input, output, session):
                 name="Selected", marker=dict(color=PALETTE["amber"], size=12),
             ))
         apply_dark_layout(fig, 340)
-        fig.update_yaxes(title="Surface water (km²)")
+        fig.update_yaxes(title="Surface water (kmÂ²)")
         fig.update_xaxes(title="")
         return fig
 
@@ -1188,13 +1437,13 @@ def server(input, output, session):
             ),
             hovertemplate=(
                 "<b>%{text}</b><br>Rain anomaly: %{x:+,.0f} mm"
-                "<br>Water: %{y:,.0f} km²<extra></extra>"
+                "<br>Water: %{y:,.0f} kmÂ²<extra></extra>"
             ),
         ))
         fig.add_vline(x=0, line_dash="dot", line_color=PALETTE["muted"])
         apply_dark_layout(fig, 340)
         fig.update_xaxes(title="Rainfall anomaly (mm)")
-        fig.update_yaxes(title="Surface water (km²)")
+        fig.update_yaxes(title="Surface water (kmÂ²)")
         return fig
 
     @output
@@ -1223,11 +1472,11 @@ def server(input, output, session):
                 marker=dict(size=4, color=PALETTE["amber"] if is_sel else PALETTE["muted"]),
                 line=dict(color=PALETTE["amber"] if is_sel else PALETTE["cyan"]),
                 fillcolor="rgba(245,158,11,0.18)" if is_sel else "rgba(14,165,233,0.12)",
-                hovertemplate=f"<b>{prov}</b><br>%{{x:,.0f}} km²<extra></extra>",
+                hovertemplate=f"<b>{prov}</b><br>%{{x:,.0f}} kmÂ²<extra></extra>",
             ))
         apply_dark_layout(fig, 400)
         fig.update_layout(margin=dict(l=90, r=20, t=10, b=38))
-        fig.update_xaxes(title=f"Monthly surface water (km²) — distribution across {y}")
+        fig.update_xaxes(title=f"Monthly surface water (kmÂ²) â€” distribution across {y}")
         fig.update_yaxes(showgrid=False)
         return fig
 
@@ -1321,7 +1570,7 @@ def server(input, output, session):
         if not wt.empty:
             fig.add_trace(go.Scatter(
                 x=wt["date"], y=wt["water_area_km2"], mode="lines",
-                name="Surface water (km²)", line=dict(color=PALETTE["cyan"], width=1.6),
+                name="Surface water (kmÂ²)", line=dict(color=PALETTE["cyan"], width=1.6),
                 yaxis="y2",
             ))
         sel_date = pd.Timestamp(year=int(input.year()), month=int(input.month()), day=1)
@@ -1333,7 +1582,7 @@ def server(input, output, session):
             legend=dict(orientation="h", y=1.12, x=1, xanchor="right"),
             xaxis=dict(showgrid=True, gridcolor=PALETTE["grid"], zeroline=False, title=""),
             yaxis=dict(title="Rainfall (mm)", showgrid=True, gridcolor=PALETTE["grid"], zeroline=False),
-            yaxis2=dict(title="Surface water (km²)", overlaying="y", side="right", showgrid=False, zeroline=False),
+            yaxis2=dict(title="Surface water (kmÂ²)", overlaying="y", side="right", showgrid=False, zeroline=False),
         )
         return fig
 

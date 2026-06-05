@@ -1,4 +1,5 @@
-# Ignore virtual environment
+# Ignore virtual environments
+.venv/
 chun/
 
 # Ignore generated EDA artifacts
@@ -6,11 +7,9 @@ eda_outputs/
 
 # Ignore Python bytecode caches
 __pycache__/
-
 _pycache__/**
+*.pyc
 
-.venv/
+# Ignore local/temp files
 _envprobe.txt
-
-.venv/
-_envprobe.txt
+.early.coverage

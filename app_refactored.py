@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import json
 import numpy as np
 import logging
+from pathlib import Path
 
 # Configure logger
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +19,10 @@ logger = logging.getLogger("MekongFloodLens")
 
 PANEL_PATH = "data/processed/province_month_panel.csv"
 BOUNDARY_PATH = "data/raw/mekong_provinces_boundary.geojson"
+RAW_DAILY_PATH = "data/raw/mekong_province_day_rainfall_1981_2025.csv"
+FORECAST_DAILY_PATH = "modeling/result/all_provinces_forecast_next_12_months.csv"
+SPLIT_HISTORY_DIR = Path("modeling/data_splitted")
+SPLIT_FORECAST_DIR = Path("modeling/result")
 
 df = pd.read_csv(PANEL_PATH)
 df["year"] = pd.to_numeric(df["year"], errors="coerce").astype(int)
@@ -100,6 +105,78 @@ df["has_cropland"] = df["cropland_area_km2"].notna()
 
 df = df.fillna(0)
 
+daily_rain_df = pd.read_csv(RAW_DAILY_PATH)
+daily_rain_df["date"] = pd.to_datetime(daily_rain_df["date"], errors="coerce")
+daily_rain_df["year"] = pd.to_numeric(daily_rain_df["year"], errors="coerce").astype(int)
+daily_rain_df["month"] = pd.to_numeric(daily_rain_df["month"], errors="coerce").astype(int)
+daily_rain_df["day"] = pd.to_numeric(daily_rain_df["day"], errors="coerce").astype(int)
+daily_rain_df["rainfall_mm"] = pd.to_numeric(daily_rain_df["rainfall_mm"], errors="coerce").fillna(0)
+daily_rain_df["province_name"] = daily_rain_df["province_name"].astype(str).str.strip()
+
+if Path(FORECAST_DAILY_PATH).exists():
+    forecast_daily_df = pd.read_csv(FORECAST_DAILY_PATH)
+    forecast_daily_df["date"] = pd.to_datetime(forecast_daily_df["date"], errors="coerce")
+    forecast_daily_df["year"] = pd.to_numeric(forecast_daily_df["year"], errors="coerce").astype(int)
+    forecast_daily_df["month"] = pd.to_numeric(forecast_daily_df["month"], errors="coerce").astype(int)
+    forecast_daily_df["day"] = pd.to_numeric(forecast_daily_df["day"], errors="coerce").astype(int)
+    forecast_daily_df["predicted_rainfall_mm"] = pd.to_numeric(
+        forecast_daily_df["predicted_rainfall_mm"], errors="coerce"
+    ).fillna(0)
+    forecast_daily_df["province_name"] = forecast_daily_df["province_name"].astype(str).str.strip()
+else:
+    forecast_daily_df = pd.DataFrame(
+        columns=["province_name", "date", "year", "month", "day", "predicted_rainfall_mm", "model_name"]
+    )
+
+
+def _load_split_daily_history():
+    history_map = {}
+    for file_path in sorted(SPLIT_HISTORY_DIR.glob("*_rainfall_1981_2025.csv")):
+        province_df = pd.read_csv(file_path)
+        if province_df.empty:
+            continue
+        province_df["date"] = pd.to_datetime(province_df["date"], errors="coerce")
+        province_df["year"] = pd.to_numeric(province_df["year"], errors="coerce").astype(int)
+        province_df["month"] = pd.to_numeric(province_df["month"], errors="coerce").astype(int)
+        province_df["day"] = pd.to_numeric(province_df["day"], errors="coerce").astype(int)
+        province_df["rainfall_mm"] = pd.to_numeric(province_df["rainfall_mm"], errors="coerce").fillna(0)
+        province_df["province_name"] = province_df["province_name"].astype(str).str.strip()
+        history_map[province_df["province_name"].iloc[0]] = (
+            province_df[["province_name", "date", "year", "month", "day", "rainfall_mm"]]
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+    return history_map
+
+
+def _load_split_daily_forecasts():
+    forecast_map = {}
+    for file_path in sorted(SPLIT_FORECAST_DIR.glob("*_forecast_next_12_months.csv")):
+        if file_path.name == "all_provinces_forecast_next_12_months.csv":
+            continue
+        province_df = pd.read_csv(file_path)
+        if province_df.empty:
+            continue
+        province_df["date"] = pd.to_datetime(province_df["date"], errors="coerce")
+        province_df["year"] = pd.to_numeric(province_df["year"], errors="coerce").astype(int)
+        province_df["month"] = pd.to_numeric(province_df["month"], errors="coerce").astype(int)
+        province_df["day"] = pd.to_numeric(province_df["day"], errors="coerce").astype(int)
+        province_df["predicted_rainfall_mm"] = pd.to_numeric(
+            province_df["predicted_rainfall_mm"], errors="coerce"
+        ).fillna(0)
+        province_df["province_name"] = province_df["province_name"].astype(str).str.strip()
+        forecast_map[province_df["province_name"].iloc[0]] = (
+            province_df[["province_name", "date", "year", "month", "day", "predicted_rainfall_mm", "model_name"]]
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+    return forecast_map
+
+
+split_daily_history = _load_split_daily_history()
+split_daily_forecasts = _load_split_daily_forecasts()
+forecast_provinces = sorted(set(split_daily_history.keys()) & set(split_daily_forecasts.keys()))
+
 with open(BOUNDARY_PATH, encoding="utf-8") as f:
     geojson_data = json.load(f)
 
@@ -130,6 +207,8 @@ map_label_df = pd.DataFrame(map_label_points)
 
 provinces = sorted(df["province_name"].dropna().unique().tolist())
 years = sorted(df["year"].dropna().unique().tolist())
+daily_years = sorted(daily_rain_df["year"].dropna().unique().tolist())
+default_history_start_year = max(min(daily_years), max(daily_years) - 9) if daily_years else min(years)
 
 MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
@@ -773,6 +852,19 @@ html, body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 18px;
 }
+.forecast-control-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+    gap: 16px;
+    margin-bottom: 12px;
+    align-items: end;
+}
+.forecast-note {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 0.84rem;
+    line-height: 1.5;
+}
 .bottom-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -849,7 +941,7 @@ html, body {
     line-height: 1.5;
 }
 @media (max-width: 1200px) {
-    .overview-grid, .bottom-grid, .kpi-grid, .control-grid, .duo-grid, .extreme-grid, .extreme-top-grid, .extreme-second-grid, .method-grid {
+    .overview-grid, .bottom-grid, .kpi-grid, .control-grid, .duo-grid, .extreme-grid, .extreme-top-grid, .extreme-second-grid, .method-grid, .forecast-control-grid {
         grid-template-columns: 1fr;
     }
 }
@@ -1073,6 +1165,40 @@ app_ui = ui.page_fluid(
             ),
             class_="bottom-grid",
         ),
+        ui.div(
+            ui.div("Rainfall prediction preview", class_="card-title"),
+            ui.div(
+                "Daily rainfall history from the raw dataset linked with recursive XGBoost forecasts. "
+                "Use the sliders to decide how much historical context and how many forecast months to show.",
+                class_="card-subtitle",
+            ),
+            ui.div(
+                ui.input_slider(
+                    "history_year_range",
+                    "Historical years to display",
+                    min(daily_years),
+                    max(daily_years),
+                    value=(default_history_start_year, max(daily_years)),
+                ),
+                ui.input_slider(
+                    "forecast_horizon_months",
+                    "Prediction horizon (months)",
+                    1,
+                    12,
+                    12,
+                ),
+                ui.input_select(
+                    "forecast_province",
+                    "Prediction province",
+                    choices=forecast_provinces,
+                    selected=forecast_provinces[0] if forecast_provinces else None,
+                ),
+                class_="forecast-control-grid",
+            ),
+            output_widget("rainfall_forecast_plot", height="420px"),
+            ui.output_ui("forecast_window_note"),
+            class_="card",
+        ),
         # ===========================================================
         # ACT 5 - WHO / WHAT is exposed?
         # ===========================================================
@@ -1204,6 +1330,37 @@ def selected_province_or_mean_year_df(input):
         return d
 
     return df[(df["year"] == y) & (df["province_name"] == p)].copy()
+
+
+def selected_daily_history_df(input):
+    selected_years = input.history_year_range()
+    start_year = int(selected_years[0])
+    end_year = int(selected_years[1])
+    p = input.forecast_province()
+    province_df = split_daily_history.get(p, pd.DataFrame())
+    if province_df.empty:
+        return province_df.copy()
+    return (
+        province_df[(province_df["year"] >= start_year) & (province_df["year"] <= end_year)][["date", "rainfall_mm"]]
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+
+def selected_daily_forecast_df(input):
+    p = input.forecast_province()
+    horizon_months = int(input.forecast_horizon_months())
+    d = split_daily_forecasts.get(p, pd.DataFrame()).copy()
+
+    if d.empty:
+        return d
+
+    forecast_start = pd.Timestamp(d["date"].min())
+    forecast_end = min(
+        pd.Timestamp(d["date"].max()),
+        forecast_start + pd.DateOffset(months=horizon_months) - pd.Timedelta(days=1),
+    )
+    return d[(d["date"] >= forecast_start) & (d["date"] <= forecast_end)].copy()
 
 
 # ==========================================================
@@ -1809,6 +1966,80 @@ def server(input, output, session):
         fig.update_yaxes(title="Avg rainfall (mm)")
         fig.update_xaxes(title="", showgrid=False)
         return fig
+
+    @output
+    @render_widget
+    def rainfall_forecast_plot():
+        history = selected_daily_history_df(input)
+        forecast = selected_daily_forecast_df(input)
+        if history.empty and forecast.empty:
+            return empty_fig(420, "No historical or forecast rainfall data available")
+
+        selected_name = input.forecast_province()
+        fig = go.Figure()
+
+        if not history.empty:
+            fig.add_trace(go.Scatter(
+                x=history["date"],
+                y=history["rainfall_mm"],
+                mode="lines",
+                name=f"{selected_name} history",
+                line=dict(color=PALETTE["accent"], width=1.8),
+                hovertemplate="Date: %{x|%Y-%m-%d}<br>Observed rainfall: %{y:,.1f} mm<extra></extra>",
+            ))
+
+        if not forecast.empty:
+            fig.add_trace(go.Scatter(
+                x=forecast["date"],
+                y=forecast["predicted_rainfall_mm"],
+                mode="lines",
+                name=f"{selected_name} forecast",
+                line=dict(color=PALETTE["amber"], width=2.5, dash="dash"),
+                hovertemplate="Date: %{x|%Y-%m-%d}<br>Predicted rainfall: %{y:,.1f} mm<extra></extra>",
+            ))
+            forecast_start = pd.Timestamp(forecast["date"].min())
+            forecast_end = pd.Timestamp(forecast["date"].max())
+            fig.add_vline(x=forecast_start, line_dash="dot", line_color=PALETTE["amber"])
+            fig.add_vrect(
+                x0=forecast_start,
+                x1=forecast_end,
+                fillcolor="rgba(245, 158, 11, 0.08)",
+                line_width=0,
+                layer="below",
+            )
+
+        apply_dark_layout(fig, 420, legend=True)
+        fig.update_yaxes(title="Daily rainfall (mm)")
+        fig.update_xaxes(title="", rangeslider=dict(visible=True), type="date")
+        return fig
+
+    @output
+    @render.ui
+    def forecast_window_note():
+        history = selected_daily_history_df(input)
+        forecast = selected_daily_forecast_df(input)
+        history_text = "No historical slice selected."
+        forecast_text = "No forecast file found."
+
+        if not history.empty:
+            history_text = (
+                f"Historical window: <b>{history['date'].min():%Y-%m-%d}</b> to "
+                f"<b>{history['date'].max():%Y-%m-%d}</b>."
+            )
+        if not forecast.empty:
+            forecast_text = (
+                f"Forecast window: <b>{forecast['date'].min():%Y-%m-%d}</b> to "
+                f"<b>{forecast['date'].max():%Y-%m-%d}</b> "
+                f"({int(input.forecast_horizon_months())} month(s) ahead)."
+            )
+
+        return ui.div(
+            ui.HTML(
+                f"{history_text} {forecast_text} "
+                "Observed data comes from the raw daily rainfall file; future values come from the recursive XGBoost outputs in modeling/result."
+            ),
+            class_="forecast-note",
+        )
 
     @output
     @render_widget

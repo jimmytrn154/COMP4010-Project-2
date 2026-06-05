@@ -1,5 +1,6 @@
 # Ignore virtual environment
 chun/
+venv/
 
 # Ignore generated EDA artifacts
 eda_outputs/

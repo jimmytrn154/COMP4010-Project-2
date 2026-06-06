@@ -238,6 +238,7 @@ Current dashboard tabs:
 Current dashboard capabilities:
 
 - global filters for year, month, province, top-N, and metric
+- chart-driven province filtering from province bars and the rainfall-vs-water scatter
 - province choropleth map
 - KPI cards
 - rainfall anomaly ranking
@@ -247,26 +248,28 @@ Current dashboard capabilities:
 - surface-water trend and rainfall-vs-water scatter
 - province comparison and timeline views
 - daily rainfall history plus forecast preview for each province
+- an `ML Prediction` tab summary that explains the forecast model, inputs, horizon, and caveats
 
 Important interpretation notes:
 
 - the dashboard is exploratory, not operational
 - JRC water data should be treated as surface-water extent or flood proxy, not flood impact
 - the `ML Prediction` tab is a model preview, not an official advisory
+- the forecast view currently emphasizes interpretability and recent-pattern behavior; the app does not yet surface held-out error metrics
 
 ## Dependencies
 
 Current dependencies in [requirements.txt](requirements.txt):
 
-- `pandas`
-- `shiny`
-- `plotly`
-- `geopandas`
-- `htmltools`
-- `shinywidgets`
-- `scikit-learn`
-- `xgboost`
-- `jupyter`
+- `pandas==2.3.3`
+- `shiny==1.6.2`
+- `plotly==5.24.1`
+- `geopandas==1.1.3`
+- `htmltools==0.7.0`
+- `shinywidgets==0.8.1`
+- `scikit-learn==1.7.2`
+- `xgboost==3.2.0`
+- `ipykernel==7.2.0`
 
 ## Useful Commands
 
@@ -311,6 +314,7 @@ The repo is currently in a strong implementation state:
 - data collection is done for the core layers
 - monthly and daily processing outputs exist
 - the main Shiny dashboard is implemented
+- chart-click cross-filtering is implemented for province-focused exploration
 - forecast files already exist and are wired into the dashboard
 - the remaining work is mostly polish, validation, submission packaging, and any final analytical framing decisions
 

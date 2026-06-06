@@ -6,198 +6,244 @@
 - Course: `COMP4010`
 - Team: `Group 3`
 - Repository: `COMP4010-Project-2`
-- Last updated: `2026-05-29`
+- Main application entry point: `app_refactored.py`
+- Last updated: `2026-06-06`
 
-## Current Goal
+## Current Repo Position
 
-Build an interactive Python Shiny dashboard for the Vietnamese Mekong Delta that combines rainfall, surface-water/flood-proxy, cropland, population, and province-boundary data into one province-level water-risk analysis pipeline.
+The project is no longer an early MVP. The current repository already contains:
 
-## Overall Status
+- cleaned monthly rainfall, surface-water, and exposure layers
+- a merged province-month analytical panel
+- daily-derived rainfall persistence and extreme-event features
+- province-level split daily rainfall files for modeling
+- province-level 12-month rainfall forecast exports
+- a multi-tab Python Shiny dashboard with an `ML Prediction` tab
 
-| Area | Status | Notes |
+The remaining work is mostly submission-facing:
+
+- tighten narrative consistency across docs and report
+- validate the final app walkthrough
+- make teamwork evidence explicit
+- decide whether to add any last small analytical polish
+
+## 2b Application Status
+
+Working assessment against rubric section `2b. Application`:
+
+| Criterion | Current status | Notes |
 |---|---|---|
-| Repository setup | Done | Base repo structure is in place |
-| Proposal and wireframe | Done | Proposal and dashboard wireframe are available |
-| Raw data collection | Done | Rainfall, surface-water, cropland, population, and boundary datasets have been pulled from Google Earth Engine |
-| Boundary data | Done | `mekong_provinces_boundary.geojson` extracted from FAO GAUL |
-| Rainfall data | Done | CHIRPS monthly province-level rainfall extracted for `1981-2025` |
-| Surface-water data | Done | JRC Global Surface Water monthly province-level water area extracted for `1984-2021` |
-| Cropland data | Done | ESA WorldCover 2021 province-level cropland area extracted |
-| Population data | Done | WorldPop province-year population extracted for `2000-2021` |
-| Rainfall cleaning | Done | Existing cleaning script updated to use the new `1981-2025` rainfall file |
-| Integrated panel dataset | Done | Merged rainfall, water, cropland, population, and boundary data into one panel |
-| Dashboard app | Done | Full interactive Shiny app with Mapbox choropleth and premium dark aesthetics implemented |
-| Dependency management | Done | `requirements.txt` added with `shiny`, `pandas`, `plotly`, `geopandas`, and `shinywidgets` |
-| Documentation | Done | README, progress tracker, and walkthroughs updated to reflect completion |
+| `2.6` Visualization quality & design | Good | Cohesive dark theme, clear tab structure, and stronger storytelling than a raw dashboard |
+| `2.7` Chart requirements met | Excellent | Exceeds minimum chart count and chart-type variety |
+| `2.8` Interactivity | Good -> improved | Global filters already existed; chart-click province filtering has now been added |
+| `2.9` Technical complexity | Excellent | Multi-source pipeline, spatial view, daily feature engineering, and forecasting |
+| `2.10` ML / analytics | Good -> improved | Forecast tab now includes model framing, inputs, horizon, and caveats |
+| `2.11` Proper use of Python Shiny | Good -> improved | Added shared reactive helpers for repeated filtered subsets |
+| `2.12` Reproducibility & code quality | Good -> improved | `requirements.txt` is now pinned to the local working environment |
+| `2.13` Repository organization & documentation | Good -> improved | README and progress tracker now reflect the current repo state |
+| `2.14` Teamwork & collaboration evidence | Still needs explicit evidence | Repo history exists, but final ownership mapping still needs confirmation |
 
-## Data Inventory
+## Current Dashboard Scope
 
-Raw datasets collected from Google Earth Engine:
+Current dashboard tabs in `app_refactored.py`:
 
-| Dataset | File | Source | Time coverage | Granularity | Main use |
-|---|---|---|---|---|---|
-| Rainfall | `mekong_province_month_rainfall_1981_2025.csv` | CHIRPS Daily | 1981-2025 | Province-month | Rainfall trends, anomaly, drought proxy |
-| Cropland | `mekong_province_cropland_2021.csv` | ESA WorldCover | 2021 | Province | Agricultural exposure context |
-| Surface water | `mekong_province_month_water_1984_2021.csv` | JRC Global Surface Water Monthly History | 1984-03 to 2021-12 | Province-month | Surface-water extent / flood proxy |
-| Population | `mekong_province_population_2000_2021.csv` | WorldPop | 2000-2021 | Province-year | Population exposure context |
-| Boundary | `mekong_provinces_boundary.geojson` | FAO GAUL | Static boundary | Province geometry | Mapping and spatial joins |
+1. `Mekong Summary`
+2. `Rainfall & Dryness`
+3. `Surface Water`
+4. `Province Comparison`
+5. `ML Prediction`
+6. `Methodology / Caveats`
 
-## Time-Coverage Logic
+Current interactive capabilities:
 
-Different datasets have different valid periods, so the dashboard should use different analysis windows depending on the selected view:
+- global year, month, province, top-N, and metric filters
+- chart-driven province filtering from province bar charts
+- chart-driven province filtering from the rainfall anomaly vs surface-water scatter
+- linked cross-tab province focus through the shared sidebar selection
+- Plotly tooltips and highlighted selected province states
 
-| Analysis view | Recommended coverage | Reason |
+## Data and Pipeline Status
+
+### Raw data status
+
+| Dataset | File | Coverage | Role |
+|---|---|---|---|
+| CHIRPS monthly rainfall | `data/raw/mekong_province_month_rainfall_1981_2025.csv` | `1981-2025` | Monthly rainfall totals, anomaly, z-score |
+| CHIRPS daily rainfall | `data/raw/mekong_province_day_rainfall_1981_2025.csv` | `1981-2025` | Daily rainfall history, derived monthly features, forecasting |
+| JRC surface water | `data/raw/mekong_province_month_water_1984_2021.csv` | `1984-2021` | Surface-water extent / flood proxy |
+| ESA WorldCover cropland | `data/raw/mekong_province_cropland_2021.csv` | `2021` snapshot | Static agricultural exposure context |
+| WorldPop population | `data/raw/mekong_province_population_2000_2021.csv` | `2000-2021` | Annual exposure context |
+| FAO GAUL boundary | `data/raw/mekong_provinces_boundary.geojson` | Static | Province geometry for mapping |
+
+### Processed data status
+
+| File | Status | Role |
 |---|---|---|
-| Rainfall-only analysis | 1981-2025 | CHIRPS provides the longest coverage |
-| Rainfall anomaly / drought proxy | 1981-2025 or 1981-2024 | Use long historical rainfall baseline; exclude incomplete latest years if needed |
-| Rainfall + surface-water comparison | 1984-03 to 2021-12 | Overlap between CHIRPS and JRC water data |
-| Rainfall + water + population | 2000-2021 | Overlap between CHIRPS, JRC, and WorldPop |
-| Cropland exposure context | 2021 snapshot | ESA WorldCover is used as a static land-cover context layer |
+| `data/processed/province_month_rainfall.csv` | Ready | Clean rainfall with anomaly and z-score |
+| `data/processed/province_month_water.csv` | Ready | Monthly surface-water metrics |
+| `data/processed/province_exposure.csv` | Ready | Population and cropland context |
+| `data/processed/province_month_rainfall_features.csv` | Ready | Daily-derived monthly rainfall features |
+| `data/processed/province_month_panel.csv` | Ready | Main merged dashboard panel |
 
-## Milestones
+### Processing flow
 
-| Milestone | Status | Target | Notes |
-|---|---|---|---|
-| Confirm project scope | Done | May 2026 | Mekong water-risk dashboard confirmed as group topic |
-| Validate Google Earth Engine access | Done | May 2026 | GEE data extraction successfully tested |
-| Collect rainfall data | Done | May 2026 | CHIRPS rainfall exported for 1981-2025 |
-| Collect province boundaries | Done | May 2026 | FAO GAUL Mekong Delta boundary exported |
-| Collect JRC surface-water data | Done | May 2026 | Monthly surface-water/flood-proxy data exported for 1984-2021 |
-| Collect ESA WorldCover cropland data | Done | May 2026 | Province-level cropland area exported for 2021 |
-| Collect WorldPop population data | Done | May 2026 | Province-year population exported for 2000-2021 |
-| Update documentation | Done / ongoing | May 2026 | README and progress tracker updated |
-| Build integrated panel dataset | Done | May 2026 | Merged data into `province_month_panel.csv` |
-| Build dashboard prototype | Done | May 2026 | Built rainfall + water + exposure views with interactive map and trend charts |
-| Add install instructions and dependencies | Done | May 2026 | Created `requirements.txt` |
-| Final polish and submission assets | Not started | TBD | README, slides, report, demo |
+Monthly panel pipeline:
 
-## Completed Work
+1. `scripts/02_clean_rainfall.py`
+2. `scripts/03_clean_water.py`
+3. `scripts/04_clean_exposure.py`
+4. `scripts/05_build_panel.py`
 
-### Data
+Daily feature pipeline:
 
-Collected and stored the following raw files:
+1. `scripts/build_daily_extreme_features.py`
+2. `scripts/merge_daily_features_into_panel.py`
 
-- `data/raw/mekong_province_month_rainfall_1981_2025.csv`
-- `data/raw/mekong_province_cropland_2021.csv`
-- `data/raw/mekong_province_month_water_1984_2021.csv`
-- `data/raw/mekong_province_population_2000_2021.csv`
-- `data/raw/mekong_provinces_boundary.geojson`
+Modeling pipeline:
 
-Previously collected rainfall files may still exist for reference:
+1. `modeling/split_data.py`
+2. `modeling/train_all_models.ipynb`
+3. `modeling/result/*_forecast_next_12_months.csv`
 
-- `data/raw/mekong_province_month_rainfall_2020_2024.csv`
-- `data/raw/mekong_province_month_rainfall_2000_2024.csv`
+## ML Forecasting Status
 
-### Code
+The forecasting workflow is already integrated into the app as an exploratory preview.
 
-- Implemented initial rainfall cleaning pipeline in `scripts/02_clean_rainfall.py`
-- Added Earth Engine smoke test in `test.py`
-- Exported sample map to `precipitation_map.html`
+Current model framing:
 
-### Documentation
+- province-level forecasting
+- two-stage recursive daily prediction
+- `XGBoost` for rain occurrence and rainfall amount
+- recent-weighted fitting on the most recent `15 years` of valid feature rows
+- feature groups include lags, rolling rainfall statistics, wet/dry streak memory, and seasonal encodings
 
-- Added team Git workflow notes in `github.md`
-- Updated `README.md` to reflect the expanded multi-dataset status
-- Updated this progress tracker with new GEE data pulls and next-step planning
+Current app-side presentation improvements:
 
-## In Progress
+- the `ML Prediction` tab explains what the model predicts
+- it states what data and feature families are used
+- it shows the selected display horizon
+- it states that the preview is exploratory and does not expose held-out accuracy metrics in the UI yet
 
-| Final polish and submission assets | Team | TBD | Not started | Prepare README, slides, report, demo |
+## Application Architecture Snapshot
 
-## Next Tasks
+```text
+Raw monthly data ─┐
+                  ├─> monthly cleaning scripts ─┐
+Raw water data ───┘                             │
+                                                ├─> province_month_panel.csv ─┐
+Exposure data ──────────────────────────────────┘                             │
+                                                                              ├─> app_refactored.py
+Raw daily rainfall ─> daily feature pipeline ─────────────────────────────────┘
+Raw daily rainfall ─> split_data.py ─> train_all_models.ipynb ─> modeling/result/*.csv
+```
 
-| Priority | Task | Owner | Notes |
-|---|---|---|---|
-| High | Final polish and submission | Unassigned | README, slides, report, demo |
-| Medium | Add risk-score prototype | Unassigned | Explore advanced risk metrics: rainfall anomaly + water area + exposure context |
-| Low | Remove or archive outdated sample files | Unassigned | Keep old rainfall files only if useful for testing |
+## Reproducibility Status
 
-## Processed Outputs
+Current reproducibility posture:
 
-Target files in `data/processed/`:
+- the main app entry point is clear: `app_refactored.py`
+- the processed panel and forecast result files already exist in-repo
+- `requirements.txt` is pinned to the versions currently installed in the local environment
 
-| File | Purpose |
+Current limitation:
+
+- `chun/` appears to be a local virtual environment kept inside the repo
+- notebook execution environment details are still lighter than the app environment story
+
+Recommended submission stance:
+
+- keep `app_refactored.py` as the documented app entry point
+- treat `app.py` as a legacy reference file
+- avoid claiming the repository is environment-clean while `chun/` remains committed
+
+## Documentation Alignment Checklist
+
+These items should stay consistent across `README.md`, the final report, and the presentation:
+
+- the app is observational and exploratory, not an official prediction tool
+- surface water is a proxy observation, not direct flood-impact measurement
+- daily rainfall is used both for monthly feature engineering and the forecast preview
+- the current app has six tabs, including `ML Prediction`
+- forecast outputs come from `modeling/result/`
+- the app does not yet present formal held-out model accuracy metrics
+
+## Teamwork Evidence Status
+
+Visible Git history exists, but it is not yet a clean final contribution story.
+
+Observed author identities in `git shortlog -sne HEAD`:
+
+| Commits | Author identity |
 |---|---|
-| `province_month_rainfall.csv` | Cleaned rainfall with anomaly and z-score |
-| `province_month_water.csv` | Cleaned monthly surface-water metrics |
-| `province_exposure.csv` | Combined population and cropland exposure table |
-| `province_month_panel.csv` | Main merged table for dashboard views |
-| `mekong_provinces_boundary.geojson` | Dashboard-ready province boundary file |
+| 19 | `jimmytrn154 <chuong033679@stu.vinschool.edu.vn>` |
+| 9 | `Jimmy Tran <125101569+jimmytrn154@users.noreply.github.com>` |
+| 3 | `Mancupfire <mancupsea@gmail.com>` |
+| 1 | `chikien07012006 <kienduong160@gmail.com>` |
 
-## Risks and Blockers
+Implications:
 
-| Item | Type | Status | Notes |
+- one contributor appears under multiple Git identities
+- commit counts alone are not enough evidence for balanced teamwork
+
+### Submission-ready contribution matrix
+
+This should be confirmed by the team before final submission.
+
+| Team member | Data collection / cleaning | Dashboard / UI | Modeling | Documentation / presentation | Evidence |
+|---|---|---|---|---|---|
+| Member 1 | Confirm | Confirm | Confirm | Confirm | PRs, commits, report sections |
+| Member 2 | Confirm | Confirm | Confirm | Confirm | PRs, commits, report sections |
+| Member 3 | Confirm | Confirm | Confirm | Confirm | PRs, commits, report sections |
+
+### Teamwork actions still needed
+
+1. Normalize Git author identity before final submission if possible.
+2. Fill the contribution matrix with confirmed ownership.
+3. Mirror that same ownership story in slides or report appendix.
+
+## Remaining Submission Tasks
+
+| Priority | Task | Status | Notes |
 |---|---|---|---|
-| Mixed dataset time coverage | Risk | Open | Rainfall, water, population, and cropland have different time ranges |
-| Surface water is not direct flood impact | Limitation | Open | JRC should be labeled as surface-water extent or flood proxy |
-| Earth Engine project access may vary by teammate | Blocker | Open | Raw data already exported, but re-extraction may need GEE access |
-
-## Decisions Log
-
-| Date | Decision | Reason |
-|---|---|---|
-| 2026-05-18 | Keep current scope documented as rainfall MVP | Matched repo contents at the time |
-| 2026-05-18 | Track progress in a dedicated Markdown file | Easier to update during development |
-| 2026-05-29 | Expand from rainfall MVP to multi-layer water-risk dashboard | Team collected rainfall, water, cropland, population, and boundary datasets |
-| 2026-05-29 | Treat JRC as surface-water/flood proxy, not official flood impact | Avoid overclaiming what the dataset measures |
-| 2026-05-29 | Use ESA WorldCover 2021 as static cropland exposure context | WorldCover is a snapshot layer, not a long historical series |
-| 2026-05-29 | Use WorldPop as annual exposure data for 2000-2021 | Population is yearly and should be merged by province and year |
+| High | Run final end-to-end app check | Pending | Verify tabs, interactions, and forecast tab behavior |
+| High | Align report wording with current dashboard | Pending | Match README and app scope exactly |
+| High | Finalize contribution matrix | Pending | Needs confirmed teammate ownership |
+| Medium | Add one final demo script / walkthrough | Pending | Useful for live rubric coverage |
+| Medium | Decide whether to expose explicit validation metrics in-app | Optional | Only if a reliable metric artifact is available |
+| Low | Clean or archive legacy files | Optional | `app.py`, `old/`, and local env artifacts are non-critical |
 
 ## Useful Commands
 
-### Rebuild processed rainfall data
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the dashboard:
+
+```bash
+shiny run --reload app_refactored.py
+```
+
+Rebuild the monthly panel:
 
 ```bash
 python scripts/02_clean_rainfall.py
-```
-
-### Run Earth Engine test
-
-```bash
-python test.py
-```
-
-### Planned commands
-
-```bash
 python scripts/03_clean_water.py
 python scripts/04_clean_exposure.py
 python scripts/05_build_panel.py
-shiny run --reload app.py
 ```
 
-## Update Template
+Rebuild daily-derived monthly features:
 
-Use this block when adding a new weekly or milestone update:
-
-```md
-### Update - YYYY-MM-DD
-
-- What was completed:
-- What is in progress:
-- What is blocked:
-- Next action:
+```bash
+python scripts/build_daily_extreme_features.py
+python scripts/merge_daily_features_into_panel.py
 ```
 
-## Activity Log
+Regenerate per-province modeling files:
 
-### Update - 2026-05-18
-
-- What was completed: README updated to match the repository contents at that time.
-- What is in progress: Project tracking and documentation cleanup.
-- What is blocked: Dashboard implementation has not started yet.
-- Next action: Add dependency file and start the MVP dashboard structure.
-
-### Update - 2026-05-29 (Part 1)
-
-- What was completed: Pulled expanded GEE datasets: CHIRPS rainfall `1981-2025`, JRC surface water `1984-2021`, ESA WorldCover cropland `2021`, WorldPop population `2000-2021`, and FAO GAUL Mekong boundary GeoJSON.
-- What is in progress: Updating documentation and planning the integrated data-processing pipeline.
-- What is blocked: Dashboard implementation and processed panel construction have not started yet.
-- Next action: Build `province_month_panel.csv`, create `requirements.txt`, and start the Python Shiny app.
-
-### Update - 2026-05-29 (Part 2)
-
-- What was completed: Data cleaning scripts created for water and exposure. Built the integrated `province_month_panel.csv`. `requirements.txt` added. `app.py` completely rewritten into a premium, responsive dashboard with a custom dark UI, glassmorphism aesthetics, interactive Plotly Mapbox choropleth, and trend charts.
-- What is in progress: Exploring a risk-score prototype combining multiple layers.
-- What is blocked: None.
-- Next action: Final polish and preparation of submission assets (slides, report, demo).
+```bash
+python modeling/split_data.py
+```

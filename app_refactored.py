@@ -3,6 +3,7 @@ from shinywidgets import output_widget, render_widget
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import pydeck as pdk
 import json
 import numpy as np
 import logging
@@ -82,12 +83,12 @@ def minmax(series):
 
 # ----------------------------------------------------------
 # Dryness index (PROXY) - built only from rainfall columns.
-# Blends a rainfall deficit signal (negative anomaly z-score) with the share
-# of dry days observed in the month. It is a *relative* indicator across the
-# panel, NOT an official drought classification.
+# It keeps the non-negative rainfall deficit signal (negative anomaly z-score),
+# then rescales it to 0-1 across the panel. It is a *relative* indicator,
+# NOT an official drought classification.
 # ----------------------------------------------------------
 deficit = (-df["rainfall_zscore"]).clip(lower=0)
-df["dry_index"] = 0.5 * minmax(deficit) + 0.5 * df["dry_day_ratio"].fillna(0).clip(0, 1)
+df["dry_index"] = minmax(deficit)
 
 # Availability flags so exposure / water layers degrade gracefully.
 df["has_population"] = df["population_total"].notna()
@@ -282,6 +283,9 @@ PALETTE = {
     "text": "#e2e8f0",
 }
 
+RAINFALL_3D_ELEVATION_SCALE = 2.4
+RAINFALL_3D_SELECTED_ELEVATION_SCALE = 2.55
+
 
 def apply_dark_layout(fig, height, *, legend=False, font_size=11):
     """Apply the shared transparent dark-dashboard styling to a Plotly figure."""
@@ -408,9 +412,9 @@ def summary_bullets(province, year, month):
         f"{province} received <b>{row['rainfall_mm']:,.0f} mm</b> in {mname} {year}, "
         f"{wet_txt}.",
         f"That ranks <b>#{rain_rank} of {len(mdf)}</b> provinces for rainfall this month.",
-        f"Dryness proxy: <b>{row['dry_index']:.2f}</b> "
-        f"(dry-day share {row['dry_day_ratio'] * 100:.0f}%, "
-        f"longest dry spell {row['max_consecutive_dry_days']:.0f} days).",
+        f"Rainfall-deficit proxy: <b>{row['dry_index']:.2f}</b>. "
+        f"Separate daily context: dry-day share {row['dry_day_ratio'] * 100:.0f}%, "
+        f"longest dry spell {row['max_consecutive_dry_days']:.0f} days.",
     ]
     if row["has_water"] and row["water_area_km2"] > 0:
         bullets.append(
@@ -762,7 +766,8 @@ app_ui = ui.page_sidebar(
                     "and gauge-derived data - <b>how much it rained</b>, "
                     "<b>how dry or wet that is versus normal</b>, and "
                     "<b>how much surface water</b> was mapped. Use the sidebar to pick a "
-                    "period and province, then walk the tabs left to right: "
+                    "period and province. The KPIs and map below show the selected month, "
+                    "the annual charts summarize the full year-by-year history, and the rainfall pattern charts show the long-run monsoon cycle and province gradient. Then walk the tabs left to right: "
                     "Rainfall &amp; Dryness -> Surface Water -> Province Comparison."
                 ),
                 class_="lead-note",
@@ -795,6 +800,38 @@ app_ui = ui.page_sidebar(
                 class_="duo-grid",
             ),
             ui.div(
+                chart_card(
+                    "Annual Rainfall Pattern",
+                    "Full calendar years across the dataset for the selected province or delta mean. Selected year highlighted; Month filter does not apply.",
+                    "annual_rainfall_plot", 340,
+                ),
+                chart_card(
+                    "Annual Dryness Context",
+                    "Annual mean rainfall-deficit proxy and dry-day share across full calendar years. Selected year highlighted; Month filter does not apply.",
+                    "annual_dryness_plot", 340,
+                ),
+                class_="duo-grid",
+            ),
+            ui.div(
+                chart_card(
+                    "Delta Seasonal Rainfall Cycle",
+                    "Full-history delta climatology across all years and provinces. This chart shows the monsoon cycle; Year and Month filters do not apply.",
+                    "delta_seasonality_overview_plot", 340,
+                ),
+                class_="duo-grid",
+            ),
+            ui.div(
+                ui.div(
+                    ui.div("Long-Run Province Rainfall Pattern", class_="card-title"),
+                    ui.div(
+                        "True 3D rainfall columns show the long-run mean monthly rainfall gradient across provinces. Province filter highlights only; Year and Month filters do not apply.",
+                        class_="card-subtitle",
+                    ),
+                    ui.output_ui("province_rainfall_climatology_plot"),
+                    class_="chart-card",
+                ),
+            ),
+            ui.div(
                 ui.HTML(
                     "<b>Scope &amp; data.</b> Monthly panel of 13 Mekong Delta provinces, "
                     f"{min(years)}-{max(years)}. Rainfall is CHIRPS-derived (monthly totals plus "
@@ -815,9 +852,9 @@ app_ui = ui.page_sidebar(
                 ui.HTML(
                     "<b>Which provinces show unusual rainfall or dry conditions?</b> "
                     "A positive rainfall anomaly means <b>wetter than the long-run normal</b>; "
-                    "a negative one means <b>drier</b>. The <b>dryness index</b> is a relative "
-                    "proxy (0-1) that blends a rainfall deficit with the share of dry days - "
-                    "higher means drier. It is a proxy, not an official drought class."
+                    "a negative one means <b>drier</b>. The <b>dryness index</b> is a normalized "
+                    "rainfall-deficit proxy derived only from the dry-side rainfall anomaly signal - "
+                    "higher means stronger relative deficit. It is a proxy, not an official drought class."
                 ),
                 class_="lead-note",
             ),
@@ -1015,8 +1052,10 @@ app_ui = ui.page_sidebar(
                       <ul>
                         <li><code>rainfall_anomaly</code> = monthly rainfall - long-run monthly mean.</li>
                         <li><code>rainfall_zscore</code> = standardized anomaly per province &amp; month.</li>
-                        <li><code>dry_index</code> (proxy) = 0.5 * (scaled rainfall deficit) + 0.5 * (dry-day share),
-                        scaled 0-1 <i>relative to the whole panel</i>. Higher = drier.</li>
+                        <li><code>dry_index</code> (proxy) = <code>minmax(max(-rainfall_zscore, 0))</code>,
+                        where <code>max(-rainfall_zscore, 0)</code> keeps only the dry-side anomaly signal and
+                        <code>minmax()</code> rescales that deficit term to 0-1 <i>relative to the whole panel</i>.
+                        Higher = drier.</li>
                       </ul>
                     </div>
                     """
@@ -1067,6 +1106,88 @@ def current_filter_df(input):
     if p != "All Provinces":
         d = d[d["province_name"] == p]
     return d
+
+
+def annual_rainfall_frame(selected_province):
+    annual = (
+        df.groupby(["province_name", "year"], as_index=False)
+        .agg(annual_rainfall_mm=("rainfall_mm", "sum"))
+    )
+    if selected_province == "All Provinces":
+        annual = (
+            annual.groupby("year", as_index=False)
+            .agg(annual_rainfall_mm=("annual_rainfall_mm", "mean"))
+        )
+    else:
+        annual = annual[annual["province_name"] == selected_province][["year", "annual_rainfall_mm"]].copy()
+    return annual.sort_values("year").reset_index(drop=True)
+
+
+def annual_dryness_frame(selected_province):
+    annual = (
+        df.groupby(["province_name", "year"], as_index=False)
+        .agg(
+            annual_dry_index=("dry_index", "mean"),
+            annual_dry_day_ratio=("dry_day_ratio", "mean"),
+        )
+    )
+    if selected_province == "All Provinces":
+        annual = (
+            annual.groupby("year", as_index=False)
+            .agg(
+                annual_dry_index=("annual_dry_index", "mean"),
+                annual_dry_day_ratio=("annual_dry_day_ratio", "mean"),
+            )
+        )
+    else:
+        annual = annual[annual["province_name"] == selected_province][
+            ["year", "annual_dry_index", "annual_dry_day_ratio"]
+        ].copy()
+    return annual.sort_values("year").reset_index(drop=True)
+
+
+def delta_monthly_climatology_frame():
+    clim = (
+        df.groupby("month", as_index=False)
+        .agg(mean_rainfall_mm=("rainfall_mm", "mean"))
+        .sort_values("month")
+        .reset_index(drop=True)
+    )
+    clim["month_label"] = [MONTH_NAMES[int(m) - 1][:3] for m in clim["month"]]
+    return clim
+
+
+def province_rainfall_climatology_frame():
+    return (
+        df.groupby("province_name", as_index=False)
+        .agg(mean_rainfall_mm=("rainfall_mm", "mean"))
+        .sort_values("mean_rainfall_mm", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def province_rainfall_3d_frame(selected_province):
+    frame = province_rainfall_climatology_frame().merge(map_label_df, on="province_name", how="left")
+    frame["rank"] = frame["mean_rainfall_mm"].rank(method="first", ascending=False).astype(int)
+    frame = frame.dropna(subset=["lon", "lat"]).reset_index(drop=True)
+    frame["elevation_m"] = scaled_sizes(frame["mean_rainfall_mm"], lo=6000, hi=26000).round(0)
+    frame["fill_color"] = [
+        [245, 158, 11, 235] if (selected_province != "All Provinces" and n == selected_province)
+        else [20, 184, 166, 230]
+        for n in frame["province_name"]
+    ]
+    frame["line_color"] = [
+        [255, 247, 237, 255] if (selected_province != "All Provinces" and n == selected_province)
+        else [56, 189, 248, 210]
+        for n in frame["province_name"]
+    ]
+    frame["label_altitude_m"] = frame["elevation_m"] * RAINFALL_3D_ELEVATION_SCALE + 1600
+    frame["text_color"] = [
+        [120, 53, 15, 255] if (selected_province != "All Provinces" and n == selected_province)
+        else [15, 23, 42, 255]
+        for n in frame["province_name"]
+    ]
+    return frame
 
 
 def top_k(input):
@@ -1294,6 +1415,299 @@ def server(input, output, session):
             ),
         )
         return fig
+
+    @output(suspend_when_hidden=False)
+    @render_widget
+    def annual_rainfall_plot():
+        selected_p = input.province()
+        selected_year = int(input.year())
+        annual = annual_rainfall_frame(selected_p)
+        if annual.empty:
+            return empty_fig(340, "No annual rainfall history for this selection")
+
+        long_run_mean = annual["annual_rainfall_mm"].mean()
+        selected_row = annual[annual["year"] == selected_year]
+        series_name = "Delta mean annual rainfall" if selected_p == "All Provinces" else selected_p
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=annual["year"], y=annual["annual_rainfall_mm"],
+            mode="lines+markers",
+            name=series_name,
+            line=dict(color=PALETTE["accent"], width=2.6),
+            marker=dict(size=6, color=PALETTE["accent"]),
+            hovertemplate="Year: %{x}<br>Annual rainfall: %{y:,.0f} mm<extra></extra>",
+        ))
+        fig.add_hline(
+            y=long_run_mean,
+            line_dash="dash",
+            line_color=PALETTE["cyan"],
+            annotation_text="Long-run mean",
+            annotation_position="top left",
+        )
+        if not selected_row.empty:
+            fig.add_trace(go.Scatter(
+                x=selected_row["year"], y=selected_row["annual_rainfall_mm"],
+                mode="markers",
+                name="Selected year",
+                marker=dict(size=11, color=PALETTE["amber"], line=dict(color="#f8fafc", width=1)),
+                hovertemplate="Selected year %{x}<br>Annual rainfall: %{y:,.0f} mm<extra></extra>",
+                showlegend=False,
+            ))
+        fig.add_vline(x=selected_year, line_dash="dot", line_color=PALETTE["amber"])
+        apply_dark_layout(fig, 340, legend=True)
+        fig.update_xaxes(title="Year", dtick=max(1, len(annual) // 10))
+        fig.update_yaxes(title="Annual rainfall (mm)")
+        return fig
+
+    @output(suspend_when_hidden=False)
+    @render_widget
+    def annual_dryness_plot():
+        selected_p = input.province()
+        selected_year = int(input.year())
+        annual = annual_dryness_frame(selected_p)
+        if annual.empty:
+            return empty_fig(340, "No annual dryness history for this selection")
+
+        selected_row = annual[annual["year"] == selected_year]
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=annual["year"], y=annual["annual_dry_index"],
+            mode="lines+markers",
+            name="Dryness index",
+            line=dict(color=PALETTE["accent"], width=2.4),
+            marker=dict(size=6, color=PALETTE["accent"]),
+            hovertemplate="Year: %{x}<br>Dryness index: %{y:.2f}<extra></extra>",
+            yaxis="y1",
+        ))
+        fig.add_trace(go.Scatter(
+            x=annual["year"], y=annual["annual_dry_day_ratio"],
+            mode="lines+markers",
+            name="Dry-day share",
+            line=dict(color=PALETTE["cyan"], width=2.2),
+            marker=dict(size=6, color=PALETTE["cyan"]),
+            hovertemplate="Year: %{x}<br>Dry-day share: %{y:.0%}<extra></extra>",
+            yaxis="y2",
+        ))
+        if not selected_row.empty:
+            fig.add_trace(go.Scatter(
+                x=selected_row["year"], y=selected_row["annual_dry_index"],
+                mode="markers",
+                name="Selected year (index)",
+                marker=dict(size=11, color=PALETTE["amber"], line=dict(color="#f8fafc", width=1)),
+                hovertemplate="Selected year %{x}<br>Dryness index: %{y:.2f}<extra></extra>",
+                yaxis="y1",
+                showlegend=False,
+            ))
+            fig.add_trace(go.Scatter(
+                x=selected_row["year"], y=selected_row["annual_dry_day_ratio"],
+                mode="markers",
+                name="Selected year (share)",
+                marker=dict(size=9, color="#f8fafc", line=dict(color=PALETTE["cyan"], width=2)),
+                hovertemplate="Selected year %{x}<br>Dry-day share: %{y:.0%}<extra></extra>",
+                yaxis="y2",
+                showlegend=False,
+            ))
+        fig.add_vline(x=selected_year, line_dash="dot", line_color=PALETTE["amber"])
+        apply_dark_layout(fig, 340, legend=True)
+        fig.update_layout(
+            yaxis=dict(
+                title="Dryness index",
+                showgrid=True,
+                gridcolor=PALETTE["grid"],
+                zeroline=False,
+                range=[0, 1.05],
+            ),
+            yaxis2=dict(
+                title="Dry-day share",
+                overlaying="y",
+                side="right",
+                showgrid=False,
+                zeroline=False,
+                tickformat=".0%",
+                range=[0, 1.05],
+            ),
+        )
+        fig.update_xaxes(title="Year", dtick=max(1, len(annual) // 10))
+        return fig
+
+    @output(suspend_when_hidden=False)
+    @render_widget
+    def delta_seasonality_overview_plot():
+        clim = delta_monthly_climatology_frame()
+        if clim.empty:
+            return empty_fig(340, "No long-run rainfall climatology available")
+
+        wettest_months = set(clim.nlargest(2, "mean_rainfall_mm")["month"].tolist())
+        driest_months = set(clim.nsmallest(2, "mean_rainfall_mm")["month"].tolist())
+        bar_colors = []
+        for month in clim["month"]:
+            if month in wettest_months:
+                bar_colors.append(PALETTE["cyan"])
+            elif month in driest_months:
+                bar_colors.append(PALETTE["rust"])
+            else:
+                bar_colors.append(PALETTE["accent"])
+
+        fig = go.Figure(go.Bar(
+            x=clim["month_label"],
+            y=clim["mean_rainfall_mm"],
+            marker_color=bar_colors,
+            text=[f"{v:,.0f}" for v in clim["mean_rainfall_mm"]],
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate="Month: %{x}<br>Mean rainfall: %{y:,.1f} mm<extra></extra>",
+        ))
+        apply_dark_layout(fig, 340)
+        fig.update_yaxes(title="Long-run mean rainfall (mm)")
+        fig.update_xaxes(title="", showgrid=False)
+        max_row = clim.loc[clim["mean_rainfall_mm"].idxmax()]
+        min_row = clim.loc[clim["mean_rainfall_mm"].idxmin()]
+        fig.add_annotation(
+            x=max_row["month_label"],
+            y=max_row["mean_rainfall_mm"],
+            text="Wettest",
+            yshift=28,
+            showarrow=False,
+            font=dict(color=PALETTE["cyan"], size=11),
+        )
+        fig.add_annotation(
+            x=min_row["month_label"],
+            y=min_row["mean_rainfall_mm"],
+            text="Driest",
+            yshift=24,
+            showarrow=False,
+            font=dict(color=PALETTE["rust"], size=11),
+        )
+        return fig
+
+    @output(suspend_when_hidden=False)
+    @render.ui
+    def province_rainfall_climatology_plot():
+        selected_p = input.province()
+        clim = province_rainfall_3d_frame(selected_p)
+        if clim.empty:
+            return ui.div(
+                "No long-run province rainfall averages available.",
+                class_="card-subtitle",
+            )
+
+        geo_layer = pdk.Layer(
+            "GeoJsonLayer",
+            data=geojson_data,
+            stroked=True,
+            filled=True,
+            extruded=False,
+            get_fill_color=[15, 32, 50, 58],
+            get_line_color=[41, 64, 92, 190],
+            line_width_min_pixels=1,
+            pickable=False,
+            auto_highlight=False,
+        )
+        column_layer = pdk.Layer(
+            "ColumnLayer",
+            data=clim.to_dict("records"),
+            get_position=["lon", "lat"],
+            get_elevation="elevation_m",
+            elevation_scale=RAINFALL_3D_ELEVATION_SCALE,
+            radius=11500,
+            get_fill_color="fill_color",
+            get_line_color="line_color",
+            line_width_min_pixels=2,
+            extruded=True,
+            stroked=True,
+            pickable=True,
+            auto_highlight=False,
+            disk_resolution=4,
+            coverage=1.0,
+        )
+        text_layer = pdk.Layer(
+            "TextLayer",
+            data=clim.to_dict("records"),
+            get_position=["lon", "lat", "label_altitude_m"],
+            get_text="province_name",
+            get_color="text_color",
+            get_size=18,
+            size_units="'pixels'",
+            get_alignment_baseline="'bottom'",
+            get_text_anchor="'middle'",
+            billboard=True,
+            pickable=False,
+        )
+        glow_layer = None
+        if selected_p != "All Provinces":
+            selected_marker = clim[clim["province_name"] == selected_p]
+            if not selected_marker.empty:
+                glow_layer = pdk.Layer(
+                    "ColumnLayer",
+                    data=selected_marker.to_dict("records"),
+                    get_position=["lon", "lat"],
+                    get_elevation="elevation_m",
+                    elevation_scale=RAINFALL_3D_SELECTED_ELEVATION_SCALE,
+                    get_fill_color=[[253, 230, 138, 68]],
+                    radius=15500,
+                    extruded=True,
+                    stroked=False,
+                    pickable=False,
+                    disk_resolution=20,
+                    coverage=1.0,
+                )
+
+        layers = [geo_layer]
+        if glow_layer is not None:
+            layers.append(glow_layer)
+        layers.extend([column_layer, text_layer])
+
+        original_has_jupyter_extra = pdk.bindings.deck.has_jupyter_extra
+        pdk.bindings.deck.has_jupyter_extra = lambda: False
+        try:
+            deck = pdk.Deck(
+                layers=layers,
+                initial_view_state=pdk.ViewState(
+                latitude=9.95,
+                longitude=105.65,
+                zoom=6.7,
+                pitch=58,
+                bearing=-18,
+            ),
+                tooltip={
+                    "html": (
+                        "<b>{province_name}</b><br/>"
+                        "Long-run mean monthly rainfall: {mean_rainfall_mm} mm<br/>"
+                        "Rank: {rank}"
+                    ),
+                    "style": {
+                        "backgroundColor": "rgba(8, 19, 31, 0.94)",
+                        "color": "#e2e8f0",
+                        "border": "1px solid rgba(41, 64, 92, 0.95)",
+                        "borderRadius": "8px",
+                        "fontSize": "12px",
+                    },
+                },
+                map_provider="carto",
+                map_style=pdk.map_styles.CARTO_DARK_NO_LABELS,
+                width="100%",
+                height=520,
+                parameters={
+                    "clearColor": [8, 19, 31, 0],
+                },
+                description="True 3D rainfall columns by province.",
+            )
+        finally:
+            pdk.bindings.deck.has_jupyter_extra = original_has_jupyter_extra
+        deck_html = deck.to_html(
+            as_string=True,
+            iframe_width="100%",
+            iframe_height=520,
+            notebook_display=False,
+            offline=True,
+        )
+        return ui.tags.iframe(
+            srcdoc=deck_html,
+            style="width: 100%; height: 520px; border: 0; border-radius: 12px; background: transparent;",
+            loading="lazy",
+        )
 
     # ---------------- TAB 2: anomaly ranking ----------------
     @output

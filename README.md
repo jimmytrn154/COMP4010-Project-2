@@ -22,16 +22,28 @@ The dashboard is designed as an observational and exploratory analysis tool, not
 - how provinces compare on selected indicators
 - what daily rainfall history and forecast output look like for each province
 
-The current app intentionally emphasizes transparent indicators such as:
+The current app intentionally emphasizes transparent indicators such as the global filter metrics below.
 
-- `rainfall_mm`
-- `rainfall_anomaly`
-- `rainfall_zscore`
-- `dry_index`
-- `dry_day_ratio`
-- `max_consecutive_dry_days`
-- `water_area_km2`
-- `water_area_pct`
+### Global filter metrics
+
+These are the current `Focus metric` choices in the dashboard sidebar and what each one means:
+
+- `rainfall_mm`:
+  observed monthly rainfall total in millimeters for the selected province-month
+- `rainfall_anomaly`:
+  monthly rainfall minus that province's long-run mean for the same calendar month; positive = wetter than normal, negative = drier than normal
+- `rainfall_zscore`:
+  standardized rainfall anomaly for the province-month; useful for comparing how unusual conditions are across provinces with different normal rainfall levels
+- `dry_index`:
+  normalized rainfall-deficit proxy computed as `minmax(max(-rainfall_zscore, 0))`; higher values mean stronger relative dry-side rainfall deficit
+- `dry_day_ratio`:
+  share of observed days in the province-month where daily rainfall is below `1.0 mm`
+- `max_consecutive_dry_days`:
+  longest uninterrupted run of days in the province-month where daily rainfall is below `1.0 mm`
+- `water_area_km2`:
+  satellite-mapped surface-water extent in square kilometers for the province-month
+- `water_area_pct`:
+  satellite-mapped surface-water extent as a percentage of province area for the province-month
 
 The repo no longer centers the dashboard around a combined risk score story. The live app focuses on interpretable rainfall, dryness, and surface-water metrics.
 
@@ -46,6 +58,7 @@ At the current repo state:
 - province-level forecast result files for the next 12 months already exist in `modeling/result/`
 - the main Shiny dashboard is implemented in `app_refactored.py`
 - the dashboard includes an `ML Prediction` tab that visualizes observed daily history plus recursive XGBoost forecast output
+- the Summary tab now includes a true 3D long-run rainfall map built with `pydeck`
 
 For the running project log, see [PROJECT_PROGRESS_UPDATED.md](PROJECT_PROGRESS_UPDATED.md).
 
@@ -176,6 +189,60 @@ The daily-derived monthly features currently include:
 - `dry_day_ratio`
 - `days_observed`
 
+### How derived features are computed
+
+The main derived indicators used in the dashboard and panel are defined as follows.
+
+- `monthly_mean`:
+  Long-run province-month climatology, computed as the mean of `rainfall_mm` for each `(province_name, month)` pair across the historical record.
+- `rainfall_anomaly`:
+  `rainfall_mm - monthly_mean`
+- `rainfall_zscore`:
+  `rainfall_anomaly / monthly_std`, where `monthly_std` is the standard deviation of `rainfall_mm` for each `(province_name, month)` pair. Infinite or missing z-scores are set to `0`.
+- `dry_index`:
+  A dashboard-side relative dryness proxy computed as:
+  `minmax(max(-rainfall_zscore, 0))`
+  where `max(-rainfall_zscore, 0)` keeps only the dry-side rainfall anomaly signal and `minmax()` rescales that deficit term to `0-1` across the panel. Higher values mean drier relative conditions. This is not an official drought index.
+  `dry_day_ratio` and dry/wet spell features remain separate daily-derived indicators and are not part of `dry_index`.
+
+Daily rainfall is converted into monthly province features in `scripts/build_daily_extreme_features.py` using these rules:
+
+- `is_rain_day`:
+  `rainfall_mm >= 1.0`
+- `is_dry_day`:
+  `rainfall_mm < 1.0`
+- `is_heavy_20mm`:
+  `rainfall_mm >= 20.0`
+- `is_heavy_50mm`:
+  `rainfall_mm >= 50.0`
+
+Monthly aggregates derived from those daily records:
+
+- `rainfall_mm_from_daily`:
+  sum of daily `rainfall_mm` within the province-month
+- `mean_daily_rainfall`:
+  mean of daily `rainfall_mm` within the province-month
+- `max_1day_rainfall`:
+  maximum daily `rainfall_mm` within the province-month
+- `rain_days_count`:
+  count of days where `rainfall_mm >= 1.0`
+- `dry_days_count`:
+  count of days where `rainfall_mm < 1.0`
+- `heavy_rain_days_20mm`:
+  count of days where `rainfall_mm >= 20.0`
+- `heavy_rain_days_50mm`:
+  count of days where `rainfall_mm >= 50.0`
+- `max_consecutive_dry_days`:
+  longest consecutive run of days where `rainfall_mm < 1.0` within the province-month
+- `max_consecutive_wet_days`:
+  longest consecutive run of days where `rainfall_mm >= 1.0` within the province-month
+- `days_observed`:
+  count of daily records contributing to the province-month
+- `rain_day_ratio`:
+  `rain_days_count / days_observed`
+- `dry_day_ratio`:
+  `dry_days_count / days_observed`
+
 ## Processing Pipeline
 
 ### Monthly data pipeline
@@ -264,6 +331,7 @@ Current dependencies in [requirements.txt](requirements.txt):
 - `pandas==2.3.3`
 - `shiny==1.6.2`
 - `plotly==5.24.1`
+- `pydeck==0.8.0`
 - `geopandas==1.1.3`
 - `htmltools==0.7.0`
 - `shinywidgets==0.8.1`

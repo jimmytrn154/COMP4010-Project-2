@@ -1793,9 +1793,9 @@ def server(input, output, session):
             stroked=True,
             filled=True,
             extruded=False,
-            get_fill_color=hex_to_rgba("#e7d7c3", 165) if theme_name == "light" else hex_to_rgba(palette["panel"], 58),
-            get_line_color=hex_to_rgba("#b08a65", 245) if theme_name == "light" else hex_to_rgba(palette["border"], 190),
-            line_width_min_pixels=1.5 if theme_name == "light" else 1,
+            get_fill_color=hex_to_rgba("#f4e8d8", 78) if theme_name == "light" else hex_to_rgba(palette["panel"], 34),
+            get_line_color=hex_to_rgba("#9a7754", 168) if theme_name == "light" else hex_to_rgba(palette["border"], 138),
+            line_width_min_pixels=1.0 if theme_name == "light" else 0.9,
             pickable=False,
             auto_highlight=False,
         )
@@ -1859,12 +1859,12 @@ def server(input, output, session):
             deck = pdk.Deck(
                 layers=layers,
                 initial_view_state=pdk.ViewState(
-                latitude=9.95,
-                longitude=105.65,
-                zoom=6.7,
-                pitch=58,
-                bearing=-18,
-            ),
+                    latitude=9.95,
+                    longitude=105.75,
+                    zoom=5.9,
+                    pitch=52,
+                    bearing=-15,
+                ),
                 tooltip={
                     "html": (
                         "<b>{province_name}</b><br/>"
@@ -1880,7 +1880,7 @@ def server(input, output, session):
                     },
                 },
                 map_provider="carto",
-                map_style=pdk.map_styles.CARTO_LIGHT if theme_name == "light" else pdk.map_styles.CARTO_DARK_NO_LABELS,
+                map_style=pdk.map_styles.CARTO_ROAD if theme_name == "light" else pdk.map_styles.CARTO_DARK,
                 width="100%",
                 height=520,
                 parameters={

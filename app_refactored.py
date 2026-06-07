@@ -648,6 +648,9 @@ html, body, .bslib-page-sidebar {
 .kpi-value { font-size: 1.55rem; font-weight: 850; line-height: 1.1; margin-top: 6px; color: #fff; }
 .kpi-note { font-size: 0.74rem; opacity: 0.85; color: #f1f5f9; }
 .duo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.summary-side-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.summary-side-stack > .story-card,
+.summary-side-stack > .chart-card { margin-bottom: 0; }
 .forecast-control-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
@@ -978,27 +981,27 @@ app_ui = ui.page_sidebar(
                     class_="chart-card",
                 ),
                 ui.div(
-                    ui.div("Key observations", class_="card-title"),
-                    ui.div("Plain-English read of the current selection.", class_="card-subtitle"),
-                    ui.output_ui("summary_observations"),
-                    class_="story-card",
+                    ui.div(
+                        ui.div("Key observations", class_="card-title"),
+                        ui.div("Plain-English read of the current selection.", class_="card-subtitle"),
+                        ui.output_ui("summary_observations"),
+                        class_="story-card",
+                    ),
+                    chart_card(
+                        "Annual Rainfall Pattern",
+                        "Full calendar years across the dataset for the selected province or delta mean. Selected year highlighted; Month filter does not apply.",
+                        "annual_rainfall_plot", 340,
+                    ),
+                    class_="summary-side-stack",
                 ),
                 class_="duo-grid",
             ),
             ui.div(
-                chart_card(
-                    "Annual Rainfall Pattern",
-                    "Full calendar years across the dataset for the selected province or delta mean. Selected year highlighted; Month filter does not apply.",
-                    "annual_rainfall_plot", 340,
-                ),
                 chart_card(
                     "Annual Dryness Context",
                     "Annual mean rainfall-deficit proxy and dry-day share across full calendar years. Selected year highlighted; Month filter does not apply.",
                     "annual_dryness_plot", 340,
                 ),
-                class_="duo-grid",
-            ),
-            ui.div(
                 chart_card(
                     "Delta Seasonal Rainfall Cycle",
                     "Full-history delta climatology across all years and provinces. This chart shows the monsoon cycle; Year and Month filters do not apply.",
@@ -1793,9 +1796,9 @@ def server(input, output, session):
             stroked=True,
             filled=True,
             extruded=False,
-            get_fill_color=hex_to_rgba("#e7d7c3", 165) if theme_name == "light" else hex_to_rgba(palette["panel"], 58),
-            get_line_color=hex_to_rgba("#b08a65", 245) if theme_name == "light" else hex_to_rgba(palette["border"], 190),
-            line_width_min_pixels=1.5 if theme_name == "light" else 1,
+            get_fill_color=hex_to_rgba("#f4e8d8", 78) if theme_name == "light" else hex_to_rgba(palette["panel"], 34),
+            get_line_color=hex_to_rgba("#9a7754", 168) if theme_name == "light" else hex_to_rgba(palette["border"], 138),
+            line_width_min_pixels=1.0 if theme_name == "light" else 0.9,
             pickable=False,
             auto_highlight=False,
         )
@@ -1859,12 +1862,12 @@ def server(input, output, session):
             deck = pdk.Deck(
                 layers=layers,
                 initial_view_state=pdk.ViewState(
-                latitude=9.95,
-                longitude=105.65,
-                zoom=6.7,
-                pitch=58,
-                bearing=-18,
-            ),
+                    latitude=9.95,
+                    longitude=105.75,
+                    zoom=5.9,
+                    pitch=52,
+                    bearing=-15,
+                ),
                 tooltip={
                     "html": (
                         "<b>{province_name}</b><br/>"
@@ -1880,7 +1883,7 @@ def server(input, output, session):
                     },
                 },
                 map_provider="carto",
-                map_style=pdk.map_styles.CARTO_LIGHT if theme_name == "light" else pdk.map_styles.CARTO_DARK_NO_LABELS,
+                map_style=pdk.map_styles.CARTO_ROAD if theme_name == "light" else pdk.map_styles.CARTO_DARK,
                 width="100%",
                 height=520,
                 parameters={

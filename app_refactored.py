@@ -648,6 +648,9 @@ html, body, .bslib-page-sidebar {
 .kpi-value { font-size: 1.55rem; font-weight: 850; line-height: 1.1; margin-top: 6px; color: #fff; }
 .kpi-note { font-size: 0.74rem; opacity: 0.85; color: #f1f5f9; }
 .duo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.summary-side-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.summary-side-stack > .story-card,
+.summary-side-stack > .chart-card { margin-bottom: 0; }
 .forecast-control-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
@@ -978,27 +981,27 @@ app_ui = ui.page_sidebar(
                     class_="chart-card",
                 ),
                 ui.div(
-                    ui.div("Key observations", class_="card-title"),
-                    ui.div("Plain-English read of the current selection.", class_="card-subtitle"),
-                    ui.output_ui("summary_observations"),
-                    class_="story-card",
+                    ui.div(
+                        ui.div("Key observations", class_="card-title"),
+                        ui.div("Plain-English read of the current selection.", class_="card-subtitle"),
+                        ui.output_ui("summary_observations"),
+                        class_="story-card",
+                    ),
+                    chart_card(
+                        "Annual Rainfall Pattern",
+                        "Full calendar years across the dataset for the selected province or delta mean. Selected year highlighted; Month filter does not apply.",
+                        "annual_rainfall_plot", 340,
+                    ),
+                    class_="summary-side-stack",
                 ),
                 class_="duo-grid",
             ),
             ui.div(
-                chart_card(
-                    "Annual Rainfall Pattern",
-                    "Full calendar years across the dataset for the selected province or delta mean. Selected year highlighted; Month filter does not apply.",
-                    "annual_rainfall_plot", 340,
-                ),
                 chart_card(
                     "Annual Dryness Context",
                     "Annual mean rainfall-deficit proxy and dry-day share across full calendar years. Selected year highlighted; Month filter does not apply.",
                     "annual_dryness_plot", 340,
                 ),
-                class_="duo-grid",
-            ),
-            ui.div(
                 chart_card(
                     "Delta Seasonal Rainfall Cycle",
                     "Full-history delta climatology across all years and provinces. This chart shows the monsoon cycle; Year and Month filters do not apply.",

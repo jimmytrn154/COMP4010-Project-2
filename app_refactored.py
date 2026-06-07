@@ -82,12 +82,12 @@ def minmax(series):
 
 # ----------------------------------------------------------
 # Dryness index (PROXY) - built only from rainfall columns.
-# Blends a rainfall deficit signal (negative anomaly z-score) with the share
-# of dry days observed in the month. It is a *relative* indicator across the
-# panel, NOT an official drought classification.
+# It keeps the non-negative rainfall deficit signal (negative anomaly z-score),
+# then rescales it to 0-1 across the panel. It is a *relative* indicator,
+# NOT an official drought classification.
 # ----------------------------------------------------------
 deficit = (-df["rainfall_zscore"]).clip(lower=0)
-df["dry_index"] = 0.5 * minmax(deficit) + 0.5 * df["dry_day_ratio"].fillna(0).clip(0, 1)
+df["dry_index"] = minmax(deficit)
 
 # Availability flags so exposure / water layers degrade gracefully.
 df["has_population"] = df["population_total"].notna()
@@ -408,9 +408,9 @@ def summary_bullets(province, year, month):
         f"{province} received <b>{row['rainfall_mm']:,.0f} mm</b> in {mname} {year}, "
         f"{wet_txt}.",
         f"That ranks <b>#{rain_rank} of {len(mdf)}</b> provinces for rainfall this month.",
-        f"Dryness proxy: <b>{row['dry_index']:.2f}</b> "
-        f"(dry-day share {row['dry_day_ratio'] * 100:.0f}%, "
-        f"longest dry spell {row['max_consecutive_dry_days']:.0f} days).",
+        f"Rainfall-deficit proxy: <b>{row['dry_index']:.2f}</b>. "
+        f"Separate daily context: dry-day share {row['dry_day_ratio'] * 100:.0f}%, "
+        f"longest dry spell {row['max_consecutive_dry_days']:.0f} days.",
     ]
     if row["has_water"] and row["water_area_km2"] > 0:
         bullets.append(
@@ -815,9 +815,9 @@ app_ui = ui.page_sidebar(
                 ui.HTML(
                     "<b>Which provinces show unusual rainfall or dry conditions?</b> "
                     "A positive rainfall anomaly means <b>wetter than the long-run normal</b>; "
-                    "a negative one means <b>drier</b>. The <b>dryness index</b> is a relative "
-                    "proxy (0-1) that blends a rainfall deficit with the share of dry days - "
-                    "higher means drier. It is a proxy, not an official drought class."
+                    "a negative one means <b>drier</b>. The <b>dryness index</b> is a normalized "
+                    "rainfall-deficit proxy derived only from the dry-side rainfall anomaly signal - "
+                    "higher means stronger relative deficit. It is a proxy, not an official drought class."
                 ),
                 class_="lead-note",
             ),
@@ -1015,8 +1015,10 @@ app_ui = ui.page_sidebar(
                       <ul>
                         <li><code>rainfall_anomaly</code> = monthly rainfall - long-run monthly mean.</li>
                         <li><code>rainfall_zscore</code> = standardized anomaly per province &amp; month.</li>
-                        <li><code>dry_index</code> (proxy) = 0.5 * (scaled rainfall deficit) + 0.5 * (dry-day share),
-                        scaled 0-1 <i>relative to the whole panel</i>. Higher = drier.</li>
+                        <li><code>dry_index</code> (proxy) = <code>minmax(max(-rainfall_zscore, 0))</code>,
+                        where <code>max(-rainfall_zscore, 0)</code> keeps only the dry-side anomaly signal and
+                        <code>minmax()</code> rescales that deficit term to 0-1 <i>relative to the whole panel</i>.
+                        Higher = drier.</li>
                       </ul>
                     </div>
                     """

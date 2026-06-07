@@ -3,7 +3,6 @@ from shinywidgets import output_widget, render_widget
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import pydeck as pdk
 import json
 import numpy as np
 import logging
@@ -83,12 +82,12 @@ def minmax(series):
 
 # ----------------------------------------------------------
 # Dryness index (PROXY) - built only from rainfall columns.
-# It keeps the non-negative rainfall deficit signal (negative anomaly z-score),
-# then rescales it to 0-1 across the panel. It is a *relative* indicator,
-# NOT an official drought classification.
+# Blends a rainfall deficit signal (negative anomaly z-score) with the share
+# of dry days observed in the month. It is a *relative* indicator across the
+# panel, NOT an official drought classification.
 # ----------------------------------------------------------
 deficit = (-df["rainfall_zscore"]).clip(lower=0)
-df["dry_index"] = minmax(deficit)
+df["dry_index"] = 0.5 * minmax(deficit) + 0.5 * df["dry_day_ratio"].fillna(0).clip(0, 1)
 
 # Availability flags so exposure / water layers degrade gracefully.
 df["has_population"] = df["population_total"].notna()
@@ -231,6 +230,17 @@ metric_options = {
 
 metric_labels = dict(metric_options)
 
+metric_color_scales = {
+    "rainfall_mm": "Blues",
+    "rainfall_anomaly": "RdBu",
+    "rainfall_zscore": "RdBu",
+    "dry_index": "YlOrBr",
+    "dry_day_ratio": "YlOrBr",
+    "max_consecutive_dry_days": "YlOrBr",
+    "water_area_km2": "Blues",
+    "water_area_pct": "Blues",
+}
+
 metric_plot_formats = {
     "rainfall_mm": ":,.1f",
     "rainfall_anomaly": ":+,.1f",
@@ -248,120 +258,40 @@ WATER_METRICS = {"water_area_km2", "water_area_pct"}
 
 
 # ==========================================================
-# Plot styling helpers (theme-aware)
+# Plot styling helpers (shared dark theme)
 # ==========================================================
 
-THEME_PALETTES = {
-    "dark": {
-        "accent": "#14b8a6",
-        "cyan": "#38bdf8",
-        "purple": "#0f2032",
-        "rose": "#c2410c",
-        "rust": "#c2410c",
-        "amber": "#f59e0b",
-        "green": "#22c55e",
-        "grid": "#31445f",
-        "muted": "#9fb0c7",
-        "text": "#e2e8f0",
-        "bg": "#08131f",
-        "panel": "#0f2032",
-        "border": "#29405c",
-    },
-    "light": {
-        "accent": "#2e7fb0",
-        "cyan": "#3a9aa8",
-        "purple": "#8a6fd1",
-        "rose": "#d9556b",
-        "rust": "#d9863c",
-        "amber": "#d9863c",
-        "green": "#6f9a52",
-        "grid": "#ece0d0",
-        "muted": "#8d7c6a",
-        "text": "#3f352c",
-        "bg": "#faf3e9",
-        "panel": "#fffcf6",
-        "border": "#ecdcc6",
-    },
+# Warm, cozy light palette — colours chosen to read clearly on the cream
+# dashboard background while keeping rainfall=blue / dryness=amber semantics.
+PALETTE = {
+    "accent": "#2e7fb0",   # rainfall blue (still readable on cream)
+    "cyan": "#3a9aa8",     # teal
+    "purple": "#8a6fd1",   # soft violet
+    "rose": "#d9556b",     # warm rose
+    "amber": "#d9863c",    # warm amber / terracotta
+    "green": "#6f9a52",    # warm sage
+    "grid": "#ece0d0",     # soft warm gridlines
+    "muted": "#9a8a78",    # warm muted brown-grey
+    "text": "#4a3f35",     # warm dark brown text
 }
 
-RAINFALL_3D_ELEVATION_SCALE = 2.4
-RAINFALL_3D_SELECTED_ELEVATION_SCALE = 2.55
 
-
-def current_theme_name(input):
-    mode = "dark"
-    if hasattr(input, "theme_mode"):
-        try:
-            mode = input.theme_mode()
-        except Exception:
-            mode = "dark"
-    return "light" if str(mode).lower() == "light" else "dark"
-
-
-def current_palette(input):
-    return THEME_PALETTES[current_theme_name(input)]
-
-
-def anomaly_colorscale(theme_name):
-    if theme_name == "light":
-        return [
-            [0.0, "#d9556b"],
-            [0.22, "#d9863c"],
-            [0.5, "#fffcf6"],
-            [0.78, "#2e7fb0"],
-            [1.0, "#3a9aa8"],
-        ]
-    return [
-        [0.0, "#9a3412"],
-        [0.22, "#c2410c"],
-        [0.5, "#f8fafc"],
-        [0.78, "#38bdf8"],
-        [1.0, "#14b8a6"],
-    ]
-
-
-def metric_color_scale(metric, theme_name):
-    color_scales = {
-        "rainfall_mm": "Blues",
-        "rainfall_anomaly": anomaly_colorscale(theme_name),
-        "rainfall_zscore": anomaly_colorscale(theme_name),
-        "dry_index": "YlOrBr",
-        "dry_day_ratio": "YlOrBr",
-        "max_consecutive_dry_days": "YlOrBr",
-        "water_area_km2": "Blues",
-        "water_area_pct": "Blues",
-    }
-    return color_scales.get(metric, "Viridis")
-
-
-def hex_to_rgba(hex_color, alpha=255):
-    hex_color = hex_color.lstrip("#")
-    return [int(hex_color[i:i + 2], 16) for i in (0, 2, 4)] + [alpha]
-
-
-def apply_plot_layout(fig, palette, height, *, legend=False, font_size=11):
-    """Apply the shared transparent dashboard styling to a Plotly figure."""
+def apply_dark_layout(fig, height, *, legend=False, font_size=11):
+    """Apply the shared transparent dark-dashboard styling to a Plotly figure."""
     layout = dict(
         height=height,
         margin=dict(l=45, r=20, t=10, b=38),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=palette["text"], size=font_size),
+        font=dict(color=PALETTE["text"], size=font_size),
     )
     if legend:
-        layout["legend"] = dict(
-            orientation="h",
-            y=1.12,
-            x=1,
-            xanchor="right",
-            font=dict(color=palette["text"]),
-            bgcolor="rgba(0,0,0,0)",
-        )
+        layout["legend"] = dict(orientation="h", y=1.12, x=1, xanchor="right")
     else:
         layout["showlegend"] = False
     fig.update_layout(**layout)
-    fig.update_xaxes(showgrid=True, gridcolor=palette["grid"], zeroline=False)
-    fig.update_yaxes(showgrid=True, gridcolor=palette["grid"], zeroline=False, automargin=True)
+    fig.update_xaxes(showgrid=True, gridcolor=PALETTE["grid"], zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor=PALETTE["grid"], zeroline=False, automargin=True)
     return fig
 
 
@@ -374,12 +304,11 @@ def scaled_sizes(series, lo=9, hi=26):
     return lo + (s - s.min()) / spread * (hi - lo)
 
 
-def empty_fig(height, message="No data for this selection", palette=None):
-    palette = palette or THEME_PALETTES["dark"]
+def empty_fig(height, message="No data for this selection"):
     fig = go.Figure()
     fig.add_annotation(
         text=message, x=0.5, y=0.5, xref="paper", yref="paper",
-        showarrow=False, font=dict(color=palette["muted"], size=13),
+        showarrow=False, font=dict(color=PALETTE["muted"], size=13),
     )
     fig.update_layout(
         height=height,
@@ -472,9 +401,9 @@ def summary_bullets(province, year, month):
         f"{province} received <b>{row['rainfall_mm']:,.0f} mm</b> in {mname} {year}, "
         f"{wet_txt}.",
         f"That ranks <b>#{rain_rank} of {len(mdf)}</b> provinces for rainfall this month.",
-        f"Rainfall-deficit proxy: <b>{row['dry_index']:.2f}</b>. "
-        f"Separate daily context: dry-day share {row['dry_day_ratio'] * 100:.0f}%, "
-        f"longest dry spell {row['max_consecutive_dry_days']:.0f} days.",
+        f"Dryness proxy: <b>{row['dry_index']:.2f}</b> "
+        f"(dry-day share {row['dry_day_ratio'] * 100:.0f}%, "
+        f"longest dry spell {row['max_consecutive_dry_days']:.0f} days).",
     ]
     if row["has_water"] and row["water_area_km2"] > 0:
         bullets.append(
@@ -490,13 +419,12 @@ def summary_bullets(province, year, month):
 
 custom_css = """
 :root {
-    --bg: #08131f;
-    --panel: #0f2032;
-    --border: #29405c;
-    --text: #e2e8f0;
-    --muted: #9fb0c7;
-    --accent: #14b8a6;
-    --accent-2: #38bdf8;
+    --bg: #faf3e9;       /* warm cream background */
+    --panel: #fffcf6;    /* soft warm white cards */
+    --border: #ecdcc6;   /* gentle tan border */
+    --text: #3f352c;     /* warm dark brown text */
+    --muted: #8d7c6a;    /* warm muted brown-grey */
+    --accent: #d9863c;   /* cozy amber / terracotta accent */
 }
 html, body, .bslib-page-sidebar {
     background: var(--bg) !important;
@@ -507,17 +435,13 @@ html, body, .bslib-page-sidebar {
 .app-header {
     padding: 18px 26px 14px 26px;
     border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
 }
 .app-header h1 {
     margin: 0;
     font-size: 2.0rem;
     font-weight: 800;
-    letter-spacing: 0;
-    background: linear-gradient(90deg, #14b8a6, #38bdf8);
+    letter-spacing: -0.01em;
+    background: linear-gradient(90deg, #e0913f, #d4623a);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -528,17 +452,15 @@ html, body, .bslib-page-sidebar {
     line-height: 1.45;
     font-size: 0.92rem;
 }
-.app-header-text { flex: 1 1 auto; min-width: 0; }
-.theme-toggle { flex: 0 0 auto; padding-top: 4px; }
 /* Sidebar */
 .bslib-sidebar-layout > .sidebar {
-    background: var(--panel) !important;
+    background: #fdf6ea !important;
     border-right: 1px solid var(--border);
 }
 .bslib-sidebar-layout > .sidebar .sidebar-content { color: var(--text); }
 .sidebar-section-title {
     font-weight: 800;
-    color: #e2e8f0;
+    color: #4a3f35;
     font-size: 0.95rem;
     margin: 4px 0 2px 0;
 }
@@ -548,20 +470,6 @@ html, body, .bslib-page-sidebar {
     line-height: 1.4;
     margin-bottom: 6px;
 }
-.filter-action-row { margin: 2px 0 10px 0; }
-.filter-action-row .btn {
-    width: 100%;
-    background: #14324b;
-    border: 1px solid #32506f;
-    color: #e2e8f0;
-    border-radius: 10px;
-    font-weight: 700;
-}
-.filter-action-row .btn:hover {
-    background: #18415f;
-    border-color: #4b6888;
-    color: #f8fafc;
-}
 /* Tabs / cards */
 .nav-tabs .nav-link {
     color: var(--muted) !important;
@@ -569,7 +477,7 @@ html, body, .bslib-page-sidebar {
     font-weight: 700;
 }
 .nav-tabs .nav-link.active {
-    color: #f8fafc !important;
+    color: #3f352c !important;
     background: transparent !important;
     border-bottom: 2px solid var(--accent) !important;
 }
@@ -585,7 +493,7 @@ html, body, .bslib-page-sidebar {
     border-radius: 16px;
     padding: 16px 18px;
     margin-bottom: 16px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    box-shadow: 0 8px 22px rgba(150, 110, 60, 0.10);
 }
 .chart-card {
     background: var(--panel);
@@ -593,11 +501,12 @@ html, body, .bslib-page-sidebar {
     border-radius: 16px;
     padding: 16px 18px;
     margin-bottom: 16px;
+    box-shadow: 0 8px 22px rgba(150, 110, 60, 0.08);
 }
 .card-title {
     font-size: 1.03rem;
     font-weight: 800;
-    color: #f8fafc;
+    color: #3f352c;
     margin-bottom: 4px;
 }
 .card-subtitle {
@@ -607,18 +516,18 @@ html, body, .bslib-page-sidebar {
     line-height: 1.45;
 }
 .lead-note {
-    color: #cbd5e1;
-    background: rgba(20, 184, 166, 0.09);
-    border: 1px solid rgba(20, 184, 166, 0.24);
+    color: #5c4f42;
+    background: rgba(217, 134, 60, 0.10);
+    border: 1px solid rgba(217, 134, 60, 0.28);
     border-radius: 14px;
     padding: 12px 16px;
     margin-bottom: 16px;
     font-size: 0.9rem;
     line-height: 1.55;
 }
-.lead-note b { color: #e2e8f0; }
-.obs-list { margin: 0; padding-left: 18px; color: #cbd5e1; font-size: 0.92rem; line-height: 1.6; }
-.obs-list b { color: #f1f5f9; }
+.lead-note b { color: #4a3f35; }
+.obs-list { margin: 0; padding-left: 18px; color: #5c4f42; font-size: 0.92rem; line-height: 1.6; }
+.obs-list b { color: #3f352c; }
 .kpi-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -632,21 +541,22 @@ html, body, .bslib-page-sidebar {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    background: linear-gradient(135deg, #0f766e, #14b8a6);
+    background: linear-gradient(135deg, #d97a4a, #c25733);  /* terracotta */
+    box-shadow: 0 8px 20px rgba(170, 100, 55, 0.18);
 }
-.kpi.cyan { background: linear-gradient(135deg, #0f5f89, #38bdf8); }
-.kpi.amber { background: linear-gradient(135deg, #b45309, #f59e0b); }
-.kpi.green { background: linear-gradient(135deg, #166534, #22c55e); }
+.kpi.cyan { background: linear-gradient(135deg, #cf9a45, #b97c24); }   /* honey / caramel */
+.kpi.amber { background: linear-gradient(135deg, #e0a93f, #cf8a2e); }  /* golden */
+.kpi.green { background: linear-gradient(135deg, #7d9e57, #5f8442); }  /* warm sage */
 .kpi-label {
     text-transform: uppercase;
     letter-spacing: 0.10em;
     font-size: 0.70rem;
     font-weight: 800;
-    opacity: 0.82;
-    color: #f8fafc;
+    opacity: 0.92;
+    color: #fff7ec;
 }
 .kpi-value { font-size: 1.55rem; font-weight: 850; line-height: 1.1; margin-top: 6px; color: #fff; }
-.kpi-note { font-size: 0.74rem; opacity: 0.85; color: #f1f5f9; }
+.kpi-note { font-size: 0.74rem; opacity: 0.9; color: #fff5e6; }
 .duo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .forecast-control-grid {
     display: grid;
@@ -662,9 +572,9 @@ html, body, .bslib-page-sidebar {
     line-height: 1.5;
 }
 .caveat-box {
-    color: #fde68a;
-    background: rgba(245, 158, 11, 0.10);
-    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #8a5212;
+    background: rgba(224, 169, 63, 0.14);
+    border: 1px solid rgba(224, 169, 63, 0.40);
     border-radius: 12px;
     padding: 12px 16px;
     margin: 14px 0;
@@ -672,193 +582,113 @@ html, body, .bslib-page-sidebar {
     line-height: 1.55;
 }
 .future-box {
-    color: #cbd5e1;
-    background: rgba(56, 189, 248, 0.08);
-    border: 1px dashed rgba(56, 189, 248, 0.42);
+    color: #5c4f42;
+    background: rgba(176, 124, 74, 0.12);
+    border: 1px dashed rgba(176, 124, 74, 0.45);
     border-radius: 12px;
     padding: 12px 16px;
     margin: 14px 0;
     font-size: 0.88rem;
     line-height: 1.55;
 }
-.future-box b { color: #7dd3fc; }
-.method-block { color: #cbd5e1; font-size: 0.9rem; line-height: 1.6; }
-.method-block h4 { color: #f1f5f9; margin: 16px 0 6px 0; font-size: 1.02rem; }
+.future-box b { color: #a05a22; }
+.method-block { color: #5c4f42; font-size: 0.9rem; line-height: 1.6; }
+.method-block h4 { color: #3f352c; margin: 16px 0 6px 0; font-size: 1.02rem; }
 .method-block ul { padding-left: 20px; }
-.method-block code { color: var(--accent); background: #0a1828; padding: 1px 6px; border-radius: 6px; }
-.ml-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
-    margin-bottom: 16px;
-}
-.ml-summary-card {
-    background: #0b1a2a;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px 14px;
-}
-.ml-summary-label {
-    color: var(--muted);
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 800;
-}
-.ml-summary-value {
-    color: #f8fafc;
-    font-size: 1.05rem;
-    font-weight: 800;
-    margin-top: 6px;
-}
-.ml-summary-note {
-    color: var(--muted);
-    font-size: 0.8rem;
-    line-height: 1.5;
-    margin-top: 6px;
-}
-.shiny-input-container { margin-bottom: 12px; color: #cbd5e1; }
+.method-block code { color: #b5651d; background: #f5e8d6; padding: 1px 6px; border-radius: 6px; }
+.shiny-input-container { margin-bottom: 12px; color: #5c4f42; }
 .form-select, .form-control {
-    background-color: #132437 !important;
-    border: 1px solid #36506d !important;
-    color: #f8fafc !important;
+    background-color: #fffcf6 !important;
+    border: 1px solid #e0cdb3 !important;
+    color: #3f352c !important;
     border-radius: 10px !important;
 }
 .method-card summary::before { content: "> "; color: var(--accent); }
 .method-card details[open] summary::before { content: "v "; }
 .irs--shiny .irs-line {
-    background: #40536b !important;
-    border: 1px solid #57718f !important;
-    box-shadow: inset 0 1px 2px rgba(7, 17, 31, 0.45);
-}
-.irs--shiny .irs-bar, .irs--shiny .irs-single { background: #14b8a6 !important; border-color: #14b8a6 !important; }
-.irs--shiny .irs-bar-edge {
-    background: #14b8a6 !important;
-    border-color: #14b8a6 !important;
-}
-.irs--shiny .irs-handle {
-    border-color: #14b8a6 !important;
-    background: #d9fbf6 !important;
-    box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.28);
-}
-.irs--shiny .irs-min, .irs--shiny .irs-max, .irs--shiny .irs-grid-text { color: #9fb0c7 !important; }
-[data-bs-theme="light"] {
-    --bg: #faf3e9;
-    --panel: #fffcf6;
-    --border: #ecdcc6;
-    --text: #3f352c;
-    --muted: #8d7c6a;
-    --accent: #d9863c;
-    --accent-2: #2e7fb0;
-}
-[data-bs-theme="light"] .app-header h1 {
-    background: linear-gradient(90deg, #e0913f, #d4623a);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-[data-bs-theme="light"] .app-header .subtitle,
-[data-bs-theme="light"] .sidebar-hint,
-[data-bs-theme="light"] .card-subtitle,
-[data-bs-theme="light"] .forecast-note,
-[data-bs-theme="light"] .ml-summary-label,
-[data-bs-theme="light"] .ml-summary-note {
-    color: #8d7c6a;
-}
-[data-bs-theme="light"] .bslib-sidebar-layout > .sidebar {
-    background: #fdf6ea !important;
-}
-[data-bs-theme="light"] .sidebar-section-title,
-[data-bs-theme="light"] .card-title,
-[data-bs-theme="light"] .ml-summary-value {
-    color: #3f352c;
-}
-[data-bs-theme="light"] .filter-action-row .btn {
-    background: #f5e8d6;
-    border-color: #e0cdb3;
-    color: #4a3f35;
-}
-[data-bs-theme="light"] .filter-action-row .btn:hover {
-    background: #ecd6bc;
-    border-color: #d7bc9f;
-    color: #3f352c;
-}
-[data-bs-theme="light"] .nav-tabs .nav-link.active {
-    color: #3f352c !important;
-}
-[data-bs-theme="light"] .story-card,
-[data-bs-theme="light"] .chart-card {
-    box-shadow: 0 8px 22px rgba(150, 110, 60, 0.10);
-}
-[data-bs-theme="light"] .lead-note {
-    color: #5c4f42;
-    background: rgba(217, 134, 60, 0.10);
-    border: 1px solid rgba(217, 134, 60, 0.28);
-}
-[data-bs-theme="light"] .lead-note b,
-[data-bs-theme="light"] .obs-list b,
-[data-bs-theme="light"] .method-block h4 {
-    color: #4a3f35;
-}
-[data-bs-theme="light"] .obs-list,
-[data-bs-theme="light"] .method-block,
-[data-bs-theme="light"] .future-box {
-    color: #5c4f42;
-}
-[data-bs-theme="light"] .kpi {
-    background: linear-gradient(135deg, #d97a4a, #c25733);
-    box-shadow: 0 8px 20px rgba(170, 100, 55, 0.18);
-}
-[data-bs-theme="light"] .kpi.cyan { background: linear-gradient(135deg, #cf9a45, #b97c24); }
-[data-bs-theme="light"] .kpi.amber { background: linear-gradient(135deg, #e0a93f, #cf8a2e); }
-[data-bs-theme="light"] .kpi.green { background: linear-gradient(135deg, #7d9e57, #5f8442); }
-[data-bs-theme="light"] .caveat-box {
-    color: #8a5212;
-    background: rgba(224, 169, 63, 0.14);
-    border: 1px solid rgba(224, 169, 63, 0.40);
-}
-[data-bs-theme="light"] .future-box {
-    background: rgba(176, 124, 74, 0.12);
-    border: 1px dashed rgba(176, 124, 74, 0.45);
-}
-[data-bs-theme="light"] .future-box b { color: #a05a22; }
-[data-bs-theme="light"] .method-block code {
-    color: #b5651d;
-    background: #f5e8d6;
-}
-[data-bs-theme="light"] .ml-summary-card {
-    background: #fffaf2;
-}
-[data-bs-theme="light"] .shiny-input-container { color: #5c4f42; }
-[data-bs-theme="light"] .form-select,
-[data-bs-theme="light"] .form-control {
-    background-color: #fffcf6 !important;
-    border: 1px solid #e0cdb3 !important;
-    color: #3f352c !important;
-}
-[data-bs-theme="light"] .irs--shiny .irs-line {
     background: #ecddc8 !important;
     border: 1px solid #ddc8a9 !important;
     box-shadow: inset 0 1px 2px rgba(150, 110, 60, 0.18);
 }
-[data-bs-theme="light"] .irs--shiny .irs-bar,
-[data-bs-theme="light"] .irs--shiny .irs-single,
-[data-bs-theme="light"] .irs--shiny .irs-bar-edge {
+.irs--shiny .irs-bar, .irs--shiny .irs-single { background: #d9863c !important; border-color: #d9863c !important; }
+.irs--shiny .irs-bar-edge {
     background: #d9863c !important;
     border-color: #d9863c !important;
 }
-[data-bs-theme="light"] .irs--shiny .irs-handle {
+.irs--shiny .irs-handle {
     border-color: #d9863c !important;
     background: #fff4e3 !important;
     box-shadow: 0 0 0 1px rgba(217, 134, 60, 0.30);
 }
-[data-bs-theme="light"] .irs--shiny .irs-min,
-[data-bs-theme="light"] .irs--shiny .irs-max,
-[data-bs-theme="light"] .irs--shiny .irs-grid-text {
-    color: #8d7c6a !important;
-}
+.irs--shiny .irs-min, .irs--shiny .irs-max, .irs--shiny .irs-grid-text { color: #8d7c6a !important; }
 @media (max-width: 1100px) {
-    .kpi-grid, .duo-grid, .forecast-control-grid, .ml-summary-grid { grid-template-columns: 1fr; }
+    .kpi-grid, .duo-grid, .forecast-control-grid { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================
+   Header layout for the Light/Dark toggle
+   ========================================================== */
+.app-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+.app-header-text { flex: 1 1 auto; min-width: 0; }
+.theme-toggle { flex: 0 0 auto; padding-top: 4px; }
+
+/* ==========================================================
+   DARK THEME
+   bslib's input_dark_mode sets data-bs-theme="dark" on <html>.
+   We flip the CSS variables (which most rules already use) and
+   override the remaining hard-coded warm-light surfaces.
+   ========================================================== */
+[data-bs-theme="dark"] {
+    --bg: #181410;       /* warm near-black */
+    --panel: #241e18;    /* warm dark card */
+    --border: #3a3026;   /* warm dark border */
+    --text: #ece2d4;     /* warm light text */
+    --muted: #a89785;    /* warm muted tan */
+    --accent: #e0913f;   /* amber accent (pops on dark) */
+}
+[data-bs-theme="dark"] .bslib-sidebar-layout > .sidebar {
+    background: #201a14 !important;
+}
+[data-bs-theme="dark"] .sidebar-section-title { color: #f0e7d9; }
+[data-bs-theme="dark"] .nav-tabs .nav-link.active { color: #f3eadc; }
+[data-bs-theme="dark"] .card-title { color: #f0e7d9; }
+[data-bs-theme="dark"] .lead-note { color: #d8ccbb; }
+[data-bs-theme="dark"] .lead-note b { color: #f0e7d9; }
+[data-bs-theme="dark"] .obs-list { color: #d8ccbb; }
+[data-bs-theme="dark"] .obs-list b { color: #f0e7d9; }
+[data-bs-theme="dark"] .future-box { color: #d8ccbb; }
+[data-bs-theme="dark"] .future-box b { color: #e9b066; }
+[data-bs-theme="dark"] .caveat-box { color: #e9c07a; }
+[data-bs-theme="dark"] .method-block { color: #d8ccbb; }
+[data-bs-theme="dark"] .method-block h4 { color: #f0e7d9; }
+[data-bs-theme="dark"] .method-block code { color: #e9b066; background: #2e261d; }
+[data-bs-theme="dark"] .shiny-input-container { color: #d8ccbb; }
+[data-bs-theme="dark"] .form-select,
+[data-bs-theme="dark"] .form-control {
+    background-color: #2a221b !important;
+    border-color: #3f3328 !important;
+    color: #ece2d4 !important;
+}
+[data-bs-theme="dark"] .irs--shiny .irs-line {
+    background: #2e261d !important;
+    border-color: #3f3328 !important;
+}
+[data-bs-theme="dark"] .irs--shiny .irs-handle { background: #3a2f23 !important; }
+[data-bs-theme="dark"] .irs--shiny .irs-min,
+[data-bs-theme="dark"] .irs--shiny .irs-max,
+[data-bs-theme="dark"] .irs--shiny .irs-grid-text { color: #a89785 !important; }
+
+/* Plotly charts have transparent backgrounds, so they sit on the page bg.
+   Their text/gridlines are baked into SVG by the server; override them here
+   so the charts follow the theme without needing a Python re-render. */
+[data-bs-theme="dark"] .js-plotly-plot .plotly text { fill: #cdbfac !important; }
+[data-bs-theme="dark"] .js-plotly-plot .gridlayer path { stroke: #352b21 !important; }
+[data-bs-theme="dark"] .js-plotly-plot .zerolinelayer path { stroke: #4a3d2e !important; }
 """
 
 
@@ -889,14 +719,6 @@ sidebar = ui.sidebar(
     ui.input_select(
         "province", "Province",
         choices=["All Provinces"] + provinces, selected="All Provinces",
-    ),
-    ui.div(
-        "Tip: click province bars or the rainfall-vs-water scatter to update this filter.",
-        class_="sidebar-hint",
-    ),
-    ui.div(
-        ui.input_action_button("reset_province_filter", "Reset to All Provinces"),
-        class_="filter-action-row",
     ),
     ui.input_select(
         "topk", "Top-N provinces",
@@ -932,8 +754,9 @@ app_ui = ui.page_sidebar(
             ),
             class_="app-header-text",
         ),
+        # Light / Dark theme switch (toggles data-bs-theme on <html>)
         ui.div(
-            ui.input_dark_mode(id="theme_mode", mode="dark"),
+            ui.input_dark_mode(id="theme_mode", mode="light"),
             class_="theme-toggle",
         ),
         class_="app-header",
@@ -952,8 +775,7 @@ app_ui = ui.page_sidebar(
                     "and gauge-derived data - <b>how much it rained</b>, "
                     "<b>how dry or wet that is versus normal</b>, and "
                     "<b>how much surface water</b> was mapped. Use the sidebar to pick a "
-                    "period and province. The KPIs and map below show the selected month, "
-                    "the annual charts summarize the full year-by-year history, and the rainfall pattern charts show the long-run monsoon cycle and province gradient. Then walk the tabs left to right: "
+                    "period and province, then walk the tabs left to right: "
                     "Rainfall &amp; Dryness -> Surface Water -> Province Comparison."
                 ),
                 class_="lead-note",
@@ -986,38 +808,6 @@ app_ui = ui.page_sidebar(
                 class_="duo-grid",
             ),
             ui.div(
-                chart_card(
-                    "Annual Rainfall Pattern",
-                    "Full calendar years across the dataset for the selected province or delta mean. Selected year highlighted; Month filter does not apply.",
-                    "annual_rainfall_plot", 340,
-                ),
-                chart_card(
-                    "Annual Dryness Context",
-                    "Annual mean rainfall-deficit proxy and dry-day share across full calendar years. Selected year highlighted; Month filter does not apply.",
-                    "annual_dryness_plot", 340,
-                ),
-                class_="duo-grid",
-            ),
-            ui.div(
-                chart_card(
-                    "Delta Seasonal Rainfall Cycle",
-                    "Full-history delta climatology across all years and provinces. This chart shows the monsoon cycle; Year and Month filters do not apply.",
-                    "delta_seasonality_overview_plot", 340,
-                ),
-                class_="duo-grid",
-            ),
-            ui.div(
-                ui.div(
-                    ui.div("Long-Run Province Rainfall Pattern", class_="card-title"),
-                    ui.div(
-                        "True 3D rainfall columns show the long-run mean monthly rainfall gradient across provinces. Province filter highlights only; Year and Month filters do not apply.",
-                        class_="card-subtitle",
-                    ),
-                    ui.output_ui("province_rainfall_climatology_plot"),
-                    class_="chart-card",
-                ),
-            ),
-            ui.div(
                 ui.HTML(
                     "<b>Scope &amp; data.</b> Monthly panel of 13 Mekong Delta provinces, "
                     f"{min(years)}-{max(years)}. Rainfall is CHIRPS-derived (monthly totals plus "
@@ -1038,16 +828,16 @@ app_ui = ui.page_sidebar(
                 ui.HTML(
                     "<b>Which provinces show unusual rainfall or dry conditions?</b> "
                     "A positive rainfall anomaly means <b>wetter than the long-run normal</b>; "
-                    "a negative one means <b>drier</b>. The <b>dryness index</b> is a normalized "
-                    "rainfall-deficit proxy derived only from the dry-side rainfall anomaly signal - "
-                    "higher means stronger relative deficit. It is a proxy, not an official drought class."
+                    "a negative one means <b>drier</b>. The <b>dryness index</b> is a relative "
+                    "proxy (0-1) that blends a rainfall deficit with the share of dry days - "
+                    "higher means drier. It is a proxy, not an official drought class."
                 ),
                 class_="lead-note",
             ),
             ui.div(
                 chart_card(
                     "Rainfall anomaly by province",
-                    "Top-N provinces by deviation from the long-run monthly normal. Cool tones = wetter, warm tones = drier. Click a bar to focus a province.",
+                    "Top-N provinces by deviation from the long-run monthly normal. Red = wetter, blue = drier.",
                     "anomaly_rank_plot", 360,
                 ),
                 chart_card(
@@ -1074,7 +864,7 @@ app_ui = ui.page_sidebar(
             ),
             chart_card(
                 "Rainfall anomaly heatmap",
-                "Month x province rainfall z-scores for the selected year. Cool tones = wetter than normal, warm tones = drier.",
+                "Month x province rainfall z-scores for the selected year. Red = wetter than normal, blue = drier.",
                 "anomaly_heatmap", 360,
             ),
         ),
@@ -1103,7 +893,7 @@ app_ui = ui.page_sidebar(
                 chart_card(
                     "Rainfall anomaly vs surface water",
                     "Each dot is a province this month. Right = wetter than normal; up = more water. "
-                    "Upper-right is the strongest wet signal. Click a point to follow that province across tabs.",
+                    "Upper-right is the strongest wet signal.",
                     "scatter_plot", 340,
                 ),
                 class_="duo-grid",
@@ -1160,19 +950,6 @@ app_ui = ui.page_sidebar(
                     "or rainfall advisory."
                 ),
                 class_="lead-note",
-            ),
-            ui.div(
-                ui.output_ui("forecast_model_summary"),
-                ui.div(
-                    ui.div("How to read this ML view", class_="card-title"),
-                    ui.div(
-                        "The forecast model uses recent daily rainfall history only. It helps compare the observed record with the next predicted daily pattern, not to issue warnings.",
-                        class_="card-subtitle",
-                    ),
-                    ui.output_ui("forecast_model_note"),
-                    class_="story-card",
-                ),
-                class_="duo-grid",
             ),
             ui.div(
                 ui.input_slider(
@@ -1238,10 +1015,8 @@ app_ui = ui.page_sidebar(
                       <ul>
                         <li><code>rainfall_anomaly</code> = monthly rainfall - long-run monthly mean.</li>
                         <li><code>rainfall_zscore</code> = standardized anomaly per province &amp; month.</li>
-                        <li><code>dry_index</code> (proxy) = <code>minmax(max(-rainfall_zscore, 0))</code>,
-                        where <code>max(-rainfall_zscore, 0)</code> keeps only the dry-side anomaly signal and
-                        <code>minmax()</code> rescales that deficit term to 0-1 <i>relative to the whole panel</i>.
-                        Higher = drier.</li>
+                        <li><code>dry_index</code> (proxy) = 0.5 * (scaled rainfall deficit) + 0.5 * (dry-day share),
+                        scaled 0-1 <i>relative to the whole panel</i>. Higher = drier.</li>
                       </ul>
                     </div>
                     """
@@ -1294,88 +1069,6 @@ def current_filter_df(input):
     return d
 
 
-def annual_rainfall_frame(selected_province):
-    annual = (
-        df.groupby(["province_name", "year"], as_index=False)
-        .agg(annual_rainfall_mm=("rainfall_mm", "sum"))
-    )
-    if selected_province == "All Provinces":
-        annual = (
-            annual.groupby("year", as_index=False)
-            .agg(annual_rainfall_mm=("annual_rainfall_mm", "mean"))
-        )
-    else:
-        annual = annual[annual["province_name"] == selected_province][["year", "annual_rainfall_mm"]].copy()
-    return annual.sort_values("year").reset_index(drop=True)
-
-
-def annual_dryness_frame(selected_province):
-    annual = (
-        df.groupby(["province_name", "year"], as_index=False)
-        .agg(
-            annual_dry_index=("dry_index", "mean"),
-            annual_dry_day_ratio=("dry_day_ratio", "mean"),
-        )
-    )
-    if selected_province == "All Provinces":
-        annual = (
-            annual.groupby("year", as_index=False)
-            .agg(
-                annual_dry_index=("annual_dry_index", "mean"),
-                annual_dry_day_ratio=("annual_dry_day_ratio", "mean"),
-            )
-        )
-    else:
-        annual = annual[annual["province_name"] == selected_province][
-            ["year", "annual_dry_index", "annual_dry_day_ratio"]
-        ].copy()
-    return annual.sort_values("year").reset_index(drop=True)
-
-
-def delta_monthly_climatology_frame():
-    clim = (
-        df.groupby("month", as_index=False)
-        .agg(mean_rainfall_mm=("rainfall_mm", "mean"))
-        .sort_values("month")
-        .reset_index(drop=True)
-    )
-    clim["month_label"] = [MONTH_NAMES[int(m) - 1][:3] for m in clim["month"]]
-    return clim
-
-
-def province_rainfall_climatology_frame():
-    return (
-        df.groupby("province_name", as_index=False)
-        .agg(mean_rainfall_mm=("rainfall_mm", "mean"))
-        .sort_values("mean_rainfall_mm", ascending=False)
-        .reset_index(drop=True)
-    )
-
-
-def province_rainfall_3d_frame(selected_province, palette, theme_name):
-    frame = province_rainfall_climatology_frame().merge(map_label_df, on="province_name", how="left")
-    frame["rank"] = frame["mean_rainfall_mm"].rank(method="first", ascending=False).astype(int)
-    frame = frame.dropna(subset=["lon", "lat"]).reset_index(drop=True)
-    frame["elevation_m"] = scaled_sizes(frame["mean_rainfall_mm"], lo=6000, hi=26000).round(0)
-    frame["fill_color"] = [
-        hex_to_rgba(palette["amber"], 235) if (selected_province != "All Provinces" and n == selected_province)
-        else hex_to_rgba(palette["accent"], 230)
-        for n in frame["province_name"]
-    ]
-    frame["line_color"] = [
-        [255, 247, 237, 255] if (selected_province != "All Provinces" and n == selected_province and theme_name == "dark")
-        else hex_to_rgba(palette["text"], 230 if theme_name == "light" else 210)
-        for n in frame["province_name"]
-    ]
-    frame["label_altitude_m"] = frame["elevation_m"] * RAINFALL_3D_ELEVATION_SCALE + 1600
-    frame["text_color"] = [
-        hex_to_rgba("#78350f", 255) if (selected_province != "All Provinces" and n == selected_province)
-        else hex_to_rgba("#2f241a", 255)
-        for n in frame["province_name"]
-    ]
-    return frame
-
-
 def top_k(input):
     try:
         return int(input.topk())
@@ -1406,7 +1099,7 @@ def ranking_frame(input, metric, *, ascending_for_top=False):
 
 
 def highlight_colors(names, selected_p, base, hi=None):
-    hi = hi or base
+    hi = hi or PALETTE["amber"]
     return [
         hi if (selected_p != "All Provinces" and n == selected_p) else base
         for n in names
@@ -1449,27 +1142,6 @@ def selected_daily_forecast_df(input):
 # ==========================================================
 
 def server(input, output, session):
-    chart_selected_province = reactive.value(None)
-
-    def queue_chart_selected_province(selected_name):
-        if selected_name and selected_name in provinces:
-            chart_selected_province.set(str(selected_name))
-
-    @reactive.calc
-    def current_month_all():
-        return current_all_provinces_df(input)
-
-    @reactive.calc
-    def current_month_filtered():
-        return current_filter_df(input)
-
-    @reactive.calc
-    def current_daily_history():
-        return selected_daily_history_df(input)
-
-    @reactive.calc
-    def current_daily_forecast():
-        return selected_daily_forecast_df(input)
 
     @reactive.effect
     def _log_filters():
@@ -1478,59 +1150,44 @@ def server(input, output, session):
             f"Month={input.month()}, Metric={input.metric()}, TopK={input.topk()}"
         )
 
-    @reactive.effect
-    def _sync_chart_selected_province():
-        selected = chart_selected_province()
-        if not selected:
-            return
-        if selected in provinces and selected != input.province():
-            ui.update_select("province", selected=selected, session=session)
-        chart_selected_province.set(None)
-
-    @reactive.effect
-    @reactive.event(input.reset_province_filter)
-    def _reset_province_filter():
-        chart_selected_province.set(None)
-        ui.update_select("province", selected="All Provinces", session=session)
-
     # ---------------- TAB 1: KPIs ----------------
-    @output(suspend_when_hidden=False)
+    @output
     @render.ui
     def kpi_rain():
-        d = current_month_filtered()
+        d = current_filter_df(input)
         if d.empty:
             return ui.div("N/A", class_="kpi-value")
         return ui.div(f"{d['rainfall_mm'].mean():,.0f} mm", class_="kpi-value")
 
-    @output(suspend_when_hidden=False)
+    @output
     @render.ui
     def kpi_water():
-        d = current_month_filtered()
+        d = current_filter_df(input)
         d = d[d["has_water"]]
         if d.empty:
             return ui.div("No coverage", class_="kpi-value")
         return ui.div(f"{d['water_area_km2'].sum():,.0f} km^2", class_="kpi-value")
 
-    @output(suspend_when_hidden=False)
+    @output
     @render.ui
     def kpi_wettest():
-        d = current_month_all()
+        d = current_all_provinces_df(input)
         if d.empty:
             return ui.div("N/A", class_="kpi-value")
         row = d.sort_values("rainfall_mm", ascending=False).iloc[0]
         return ui.div(str(row["province_name"]), class_="kpi-value")
 
-    @output(suspend_when_hidden=False)
+    @output
     @render.ui
     def kpi_driest():
-        d = current_month_all()
+        d = current_all_provinces_df(input)
         if d.empty:
             return ui.div("N/A", class_="kpi-value")
         row = d.sort_values("dry_index", ascending=False).iloc[0]
         return ui.div(str(row["province_name"]), class_="kpi-value")
 
     # ---------------- TAB 1: observations ----------------
-    @output(suspend_when_hidden=False)
+    @output
     @render.ui
     def summary_observations():
         bullets = summary_bullets(input.province(), int(input.year()), int(input.month()))
@@ -1539,20 +1196,18 @@ def server(input, output, session):
         )
 
     # ---------------- TAB 1: map ----------------
-    @output(suspend_when_hidden=False)
+    @output
     @render_widget
     def map_plot():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
-        d = current_month_all()
+        d = current_all_provinces_df(input)
         metric = input.metric()
         label = metric_labels.get(metric, metric)
-        color_scale = metric_color_scale(metric, theme_name)
+        color_scale = metric_color_scales.get(metric, "Viridis")
 
         if metric in WATER_METRICS:
             d = d[d["has_water"]]
         if d.empty:
-            return empty_fig(520, "No data for this metric / month", palette)
+            return empty_fig(520, "No data for this metric / month")
 
         hover_data = {
             "rainfall_mm": ":,.1f",
@@ -1572,345 +1227,43 @@ def server(input, output, session):
             hover_name="province_name",
             hover_data=hover_data,
             color_continuous_scale=color_scale,
-            mapbox_style="carto-positron" if theme_name == "light" else "carto-darkmatter",
+            mapbox_style="carto-positron",
             center={"lat": 9.95, "lon": 105.65},
             zoom=6.6,
-            opacity=0.72 if theme_name == "light" else 0.78,
+            opacity=0.78,
         )
         fig.update_traces(
             marker_line_width=1.1,
-            marker_line_color="rgba(63,53,44,0.35)" if theme_name == "light" else "rgba(248,250,252,0.55)",
+            marker_line_color="rgba(120,90,60,0.45)",
             selector=dict(type="choroplethmapbox"),
         )
-        if metric in {"rainfall_anomaly", "rainfall_zscore"}:
-            fig.update_coloraxes(cmid=0)
 
         labels = map_label_df[map_label_df["province_name"].isin(d["province_name"])].copy()
         if not labels.empty:
             fig.add_trace(go.Scattermapbox(
                 lon=labels["lon"], lat=labels["lat"], text=labels["province_name"],
-                mode="text", textfont=dict(size=11, color=palette["text"]),
+                mode="text", textfont=dict(size=11, color="#3f352c"),
                 hoverinfo="skip", showlegend=False,
             ))
         fig.update_layout(
             height=520, autosize=True,
             margin=dict(l=0, r=0, t=0, b=0),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=palette["text"]),
+            font=dict(color="#4a3f35"),
             coloraxis_colorbar=dict(
                 title=label, thickness=14, len=0.65, y=0.5, x=0.98,
-                bgcolor="rgba(255,252,246,0.92)" if theme_name == "light" else "rgba(15,32,50,0.78)",
+                bgcolor="rgba(255,252,246,0.78)",
             ),
         )
         return fig
-
-    @output(suspend_when_hidden=False)
-    @render_widget
-    def annual_rainfall_plot():
-        palette = current_palette(input)
-        selected_p = input.province()
-        selected_year = int(input.year())
-        annual = annual_rainfall_frame(selected_p)
-        if annual.empty:
-            return empty_fig(340, "No annual rainfall history for this selection", palette)
-
-        long_run_mean = annual["annual_rainfall_mm"].mean()
-        selected_row = annual[annual["year"] == selected_year]
-        series_name = "Delta mean annual rainfall" if selected_p == "All Provinces" else selected_p
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=annual["year"], y=annual["annual_rainfall_mm"],
-            mode="lines+markers",
-            name=series_name,
-            line=dict(color=palette["accent"], width=2.6),
-            marker=dict(size=6, color=palette["accent"]),
-            hovertemplate="Year: %{x}<br>Annual rainfall: %{y:,.0f} mm<extra></extra>",
-        ))
-        fig.add_hline(
-            y=long_run_mean,
-            line_dash="dash",
-            line_color=palette["cyan"],
-            annotation_text="Long-run mean",
-            annotation_position="top left",
-        )
-        if not selected_row.empty:
-            fig.add_trace(go.Scatter(
-                x=selected_row["year"], y=selected_row["annual_rainfall_mm"],
-                mode="markers",
-                name="Selected year",
-                marker=dict(size=11, color=palette["amber"], line=dict(color="#f8fafc" if current_theme_name(input) == "dark" else "#ffffff", width=1)),
-                hovertemplate="Selected year %{x}<br>Annual rainfall: %{y:,.0f} mm<extra></extra>",
-                showlegend=False,
-            ))
-        fig.add_vline(x=selected_year, line_dash="dot", line_color=palette["amber"])
-        apply_plot_layout(fig, palette, 340, legend=True)
-        fig.update_xaxes(title="Year", dtick=max(1, len(annual) // 10))
-        fig.update_yaxes(title="Annual rainfall (mm)")
-        return fig
-
-    @output(suspend_when_hidden=False)
-    @render_widget
-    def annual_dryness_plot():
-        palette = current_palette(input)
-        selected_p = input.province()
-        selected_year = int(input.year())
-        annual = annual_dryness_frame(selected_p)
-        if annual.empty:
-            return empty_fig(340, "No annual dryness history for this selection", palette)
-
-        selected_row = annual[annual["year"] == selected_year]
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=annual["year"], y=annual["annual_dry_index"],
-            mode="lines+markers",
-            name="Dryness index",
-            line=dict(color=palette["accent"], width=2.4),
-            marker=dict(size=6, color=palette["accent"]),
-            hovertemplate="Year: %{x}<br>Dryness index: %{y:.2f}<extra></extra>",
-            yaxis="y1",
-        ))
-        fig.add_trace(go.Scatter(
-            x=annual["year"], y=annual["annual_dry_day_ratio"],
-            mode="lines+markers",
-            name="Dry-day share",
-            line=dict(color=palette["cyan"], width=2.2),
-            marker=dict(size=6, color=palette["cyan"]),
-            hovertemplate="Year: %{x}<br>Dry-day share: %{y:.0%}<extra></extra>",
-            yaxis="y2",
-        ))
-        if not selected_row.empty:
-            fig.add_trace(go.Scatter(
-                x=selected_row["year"], y=selected_row["annual_dry_index"],
-                mode="markers",
-                name="Selected year (index)",
-                marker=dict(size=11, color=palette["amber"], line=dict(color="#f8fafc" if current_theme_name(input) == "dark" else "#ffffff", width=1)),
-                hovertemplate="Selected year %{x}<br>Dryness index: %{y:.2f}<extra></extra>",
-                yaxis="y1",
-                showlegend=False,
-            ))
-            fig.add_trace(go.Scatter(
-                x=selected_row["year"], y=selected_row["annual_dry_day_ratio"],
-                mode="markers",
-                name="Selected year (share)",
-                marker=dict(size=9, color="#f8fafc" if current_theme_name(input) == "dark" else "#ffffff", line=dict(color=palette["cyan"], width=2)),
-                hovertemplate="Selected year %{x}<br>Dry-day share: %{y:.0%}<extra></extra>",
-                yaxis="y2",
-                showlegend=False,
-            ))
-        fig.add_vline(x=selected_year, line_dash="dot", line_color=palette["amber"])
-        apply_plot_layout(fig, palette, 340, legend=True)
-        fig.update_layout(
-            yaxis=dict(
-                title="Dryness index",
-                showgrid=True,
-                gridcolor=palette["grid"],
-                zeroline=False,
-                range=[0, 1.05],
-            ),
-            yaxis2=dict(
-                title="Dry-day share",
-                overlaying="y",
-                side="right",
-                showgrid=False,
-                zeroline=False,
-                tickformat=".0%",
-                range=[0, 1.05],
-            ),
-        )
-        fig.update_xaxes(title="Year", dtick=max(1, len(annual) // 10))
-        return fig
-
-    @output(suspend_when_hidden=False)
-    @render_widget
-    def delta_seasonality_overview_plot():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
-        clim = delta_monthly_climatology_frame()
-        if clim.empty:
-            return empty_fig(340, "No long-run rainfall climatology available", palette)
-
-        wettest_months = set(clim.nlargest(2, "mean_rainfall_mm")["month"].tolist())
-        driest_months = set(clim.nsmallest(2, "mean_rainfall_mm")["month"].tolist())
-        bar_colors = []
-        for month in clim["month"]:
-            if month in wettest_months:
-                bar_colors.append(palette["cyan"])
-            elif month in driest_months:
-                bar_colors.append(palette["rust"])
-            else:
-                bar_colors.append(palette["accent"])
-
-        fig = go.Figure(go.Bar(
-            x=clim["month_label"],
-            y=clim["mean_rainfall_mm"],
-            marker_color=bar_colors,
-            text=[f"{v:,.0f}" for v in clim["mean_rainfall_mm"]],
-            textposition="outside",
-            cliponaxis=False,
-            hovertemplate="Month: %{x}<br>Mean rainfall: %{y:,.1f} mm<extra></extra>",
-        ))
-        apply_plot_layout(fig, palette, 340)
-        fig.update_yaxes(title="Long-run mean rainfall (mm)")
-        fig.update_xaxes(title="", showgrid=False)
-        max_row = clim.loc[clim["mean_rainfall_mm"].idxmax()]
-        min_row = clim.loc[clim["mean_rainfall_mm"].idxmin()]
-        fig.add_annotation(
-            x=max_row["month_label"],
-            y=max_row["mean_rainfall_mm"],
-            text="Wettest",
-            yshift=28,
-            showarrow=False,
-            font=dict(color=palette["cyan"], size=11),
-        )
-        fig.add_annotation(
-            x=min_row["month_label"],
-            y=min_row["mean_rainfall_mm"],
-            text="Driest",
-            yshift=24,
-            showarrow=False,
-            font=dict(color=palette["rust"], size=11),
-        )
-        return fig
-
-    @output(suspend_when_hidden=False)
-    @render.ui
-    def province_rainfall_climatology_plot():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
-        selected_p = input.province()
-        clim = province_rainfall_3d_frame(selected_p, palette, theme_name)
-        if clim.empty:
-            return ui.div(
-                "No long-run province rainfall averages available.",
-                class_="card-subtitle",
-            )
-
-        geo_layer = pdk.Layer(
-            "GeoJsonLayer",
-            data=geojson_data,
-            stroked=True,
-            filled=True,
-            extruded=False,
-            get_fill_color=hex_to_rgba("#e7d7c3", 165) if theme_name == "light" else hex_to_rgba(palette["panel"], 58),
-            get_line_color=hex_to_rgba("#b08a65", 245) if theme_name == "light" else hex_to_rgba(palette["border"], 190),
-            line_width_min_pixels=1.5 if theme_name == "light" else 1,
-            pickable=False,
-            auto_highlight=False,
-        )
-        column_layer = pdk.Layer(
-            "ColumnLayer",
-            data=clim.to_dict("records"),
-            get_position=["lon", "lat"],
-            get_elevation="elevation_m",
-            elevation_scale=RAINFALL_3D_ELEVATION_SCALE,
-            radius=11500,
-            get_fill_color="fill_color",
-            get_line_color="line_color",
-            line_width_min_pixels=2,
-            extruded=True,
-            stroked=True,
-            pickable=True,
-            auto_highlight=False,
-            disk_resolution=4,
-            coverage=1.0,
-        )
-        text_layer = pdk.Layer(
-            "TextLayer",
-            data=clim.to_dict("records"),
-            get_position=["lon", "lat", "label_altitude_m"],
-            get_text="province_name",
-            get_color="text_color",
-            get_size=18,
-            size_units="'pixels'",
-            get_alignment_baseline="'bottom'",
-            get_text_anchor="'middle'",
-            billboard=True,
-            pickable=False,
-        )
-        glow_layer = None
-        if selected_p != "All Provinces":
-            selected_marker = clim[clim["province_name"] == selected_p]
-            if not selected_marker.empty:
-                glow_layer = pdk.Layer(
-                    "ColumnLayer",
-                    data=selected_marker.to_dict("records"),
-                    get_position=["lon", "lat"],
-                    get_elevation="elevation_m",
-                    elevation_scale=RAINFALL_3D_SELECTED_ELEVATION_SCALE,
-                    get_fill_color=[hex_to_rgba(palette["amber"], 70)],
-                    radius=15500,
-                    extruded=True,
-                    stroked=False,
-                    pickable=False,
-                    disk_resolution=20,
-                    coverage=1.0,
-                )
-
-        layers = [geo_layer]
-        if glow_layer is not None:
-            layers.append(glow_layer)
-        layers.extend([column_layer, text_layer])
-
-        original_has_jupyter_extra = pdk.bindings.deck.has_jupyter_extra
-        pdk.bindings.deck.has_jupyter_extra = lambda: False
-        try:
-            deck = pdk.Deck(
-                layers=layers,
-                initial_view_state=pdk.ViewState(
-                latitude=9.95,
-                longitude=105.65,
-                zoom=6.7,
-                pitch=58,
-                bearing=-18,
-            ),
-                tooltip={
-                    "html": (
-                        "<b>{province_name}</b><br/>"
-                        "Long-run mean monthly rainfall: {mean_rainfall_mm} mm<br/>"
-                        "Rank: {rank}"
-                    ),
-                    "style": {
-                        "backgroundColor": "rgba(255, 252, 246, 0.96)" if theme_name == "light" else "rgba(8, 19, 31, 0.94)",
-                        "color": palette["text"],
-                        "border": f"1px solid {palette['border']}",
-                        "borderRadius": "8px",
-                        "fontSize": "12px",
-                    },
-                },
-                map_provider="carto",
-                map_style=pdk.map_styles.CARTO_LIGHT if theme_name == "light" else pdk.map_styles.CARTO_DARK_NO_LABELS,
-                width="100%",
-                height=520,
-                parameters={
-                    "clearColor": hex_to_rgba(palette["bg"], 255),
-                },
-                description="True 3D rainfall columns by province.",
-            )
-        finally:
-            pdk.bindings.deck.has_jupyter_extra = original_has_jupyter_extra
-        deck_html = deck.to_html(
-            as_string=True,
-            iframe_width="100%",
-            iframe_height=520,
-            notebook_display=False,
-            offline=True,
-        )
-        return ui.tags.iframe(
-            srcdoc=deck_html,
-            style=f"width: 100%; height: 520px; border: 0; border-radius: 12px; background: {palette['bg']};",
-            loading="lazy",
-        )
 
     # ---------------- TAB 2: anomaly ranking ----------------
     @output
     @render_widget
     def anomaly_rank_plot():
-        palette = current_palette(input)
-        d = current_month_all()[["province_name", "rainfall_anomaly"]].dropna()
+        d = current_all_provinces_df(input)[["province_name", "rainfall_anomaly"]].dropna()
         if d.empty:
-            return empty_fig(360, palette=palette)
+            return empty_fig(360)
         k = top_k(input)
         # Show the most extreme anomalies (either direction).
         d = d.reindex(d["rainfall_anomaly"].abs().sort_values(ascending=False).index).head(k)
@@ -1920,50 +1273,39 @@ def server(input, output, session):
         colors = []
         for n, v in zip(d["province_name"], d["rainfall_anomaly"]):
             if selected_p != "All Provinces" and n == selected_p:
-                colors.append(palette["amber"])
+                colors.append(PALETTE["amber"])
             else:
-                colors.append(palette["cyan"] if v >= 0 else palette["rust"])
+                colors.append(PALETTE["rose"] if v >= 0 else PALETTE["accent"])
 
-        fig = go.FigureWidget(go.Bar(
+        fig = go.Figure(go.Bar(
             x=d["rainfall_anomaly"], y=d["province_name"], orientation="h",
             marker_color=colors,
             text=[f"{v:+,.0f}" for v in d["rainfall_anomaly"]],
             textposition="outside", cliponaxis=False,
             hovertemplate="<b>%{y}</b><br>Anomaly: %{x:+,.1f} mm<extra></extra>",
         ))
-        def _handle_anomaly_click(trace, points, state):
-            if points.point_inds:
-                queue_chart_selected_province(trace.y[points.point_inds[0]])
-
-        fig.data[0].on_click(_handle_anomaly_click)
-        fig.add_vline(x=0, line_dash="dot", line_color=palette["muted"])
-        apply_plot_layout(fig, palette, 360)
+        fig.add_vline(x=0, line_dash="dot", line_color=PALETTE["muted"])
+        apply_dark_layout(fig, 360)
         fig.update_layout(margin=dict(l=5, r=45, t=5, b=38))
-        fig.update_xaxes(title="Rainfall anomaly (mm) - cool wetter, warm drier")
+        fig.update_xaxes(title="Rainfall anomaly (mm) - red wetter, blue drier")
         fig.update_yaxes(showgrid=False)
         return fig
 
     @output
     @render_widget
     def dry_rank_plot():
-        palette = current_palette(input)
         d = ranking_frame(input, "dry_index", ascending_for_top=False)
         if d.empty:
-            return empty_fig(360, palette=palette)
-        colors = highlight_colors(d["province_name"], input.province(), palette["rust"], palette["amber"])
-        fig = go.FigureWidget(go.Bar(
+            return empty_fig(360)
+        colors = highlight_colors(d["province_name"], input.province(), PALETTE["amber"], PALETTE["rose"])
+        fig = go.Figure(go.Bar(
             x=d["dry_index"], y=d["province_name"], orientation="h",
             marker_color=colors,
             text=[f"{v:.2f}" for v in d["dry_index"]],
             textposition="outside", cliponaxis=False,
             hovertemplate="<b>%{y}</b><br>Dryness index: %{x:.2f}<extra></extra>",
         ))
-        def _handle_dryness_click(trace, points, state):
-            if points.point_inds:
-                queue_chart_selected_province(trace.y[points.point_inds[0]])
-
-        fig.data[0].on_click(_handle_dryness_click)
-        apply_plot_layout(fig, palette, 360)
+        apply_dark_layout(fig, 360)
         fig.update_layout(margin=dict(l=5, r=45, t=5, b=38))
         fig.update_xaxes(title="Dryness index (proxy, 0-1) - higher = drier", range=[0, 1.05])
         fig.update_yaxes(showgrid=False)
@@ -1973,22 +1315,21 @@ def server(input, output, session):
     @output
     @render_widget
     def seasonality_plot():
-        palette = current_palette(input)
         p = input.province()
         base = df if p == "All Provinces" else df[df["province_name"] == p]
         clim = base.groupby("month", as_index=False)["rainfall_mm"].mean()
         clim = clim.set_index("month").reindex(range(1, 13)).fillna(0).reset_index()
         if clim["rainfall_mm"].sum() == 0:
-            return empty_fig(340, palette=palette)
+            return empty_fig(340)
 
         selected_m = int(input.month())
-        colors = [palette["amber"] if m == selected_m else palette["cyan"] for m in clim["month"]]
+        colors = [PALETTE["amber"] if m == selected_m else PALETTE["cyan"] for m in clim["month"]]
         fig = go.Figure(go.Bar(
             x=[MONTH_NAMES[m - 1][:3] for m in clim["month"]],
             y=clim["rainfall_mm"], marker_color=colors,
             hovertemplate="%{x}: %{y:,.0f} mm<extra></extra>",
         ))
-        apply_plot_layout(fig, palette, 340)
+        apply_dark_layout(fig, 340)
         fig.update_yaxes(title="Avg rainfall (mm)")
         fig.update_xaxes(title="", showgrid=False)
         return fig
@@ -1996,8 +1337,6 @@ def server(input, output, session):
     @output
     @render_widget
     def rain_trend_plot():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
         y = int(input.year())
         p = input.province()
         selected_m = int(input.month())
@@ -2010,19 +1349,19 @@ def server(input, output, session):
             d = df[(df["year"] == y) & (df["province_name"] == p)].copy()
         d = d.set_index("month").reindex(range(1, 13)).reset_index()
         if d["rainfall_mm"].dropna().empty:
-            return empty_fig(340, palette=palette)
+            return empty_fig(340)
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=d["month"], y=d["rainfall_mm"], mode="lines+markers",
-            name="Selected year", line=dict(color=palette["accent"], width=3),
+            name="Selected year", line=dict(color=PALETTE["accent"], width=3),
         ))
         fig.add_trace(go.Scatter(
             x=d["month"], y=d["monthly_mean"], mode="lines+markers",
-            name="Long-run mean", line=dict(color=palette["cyan"], width=2, dash="dash"),
+            name="Long-run mean", line=dict(color=PALETTE["rose"], width=2, dash="dash"),
         ))
-        fig.add_vline(x=selected_m, line_dash="dot", line_color="#e2e8f0" if theme_name == "dark" else "#4a3f35")
-        apply_plot_layout(fig, palette, 340, legend=True)
+        fig.add_vline(x=selected_m, line_dash="dot", line_color="#e2e8f0")
+        apply_dark_layout(fig, 340, legend=True)
         fig.update_xaxes(title="Month", dtick=1)
         fig.update_yaxes(title="Rainfall (mm)")
         return fig
@@ -2030,106 +1369,38 @@ def server(input, output, session):
     @output
     @render_widget
     def anomaly_heatmap():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
         y = int(input.year())
         d = df[df["year"] == y].copy()
         if d.empty:
-            return empty_fig(360, palette=palette)
+            return empty_fig(360)
         pivot = d.pivot_table(
             index="province_name", columns="month",
             values="rainfall_zscore", aggfunc="mean",
         ).reindex(provinces)
         if pivot.dropna(how="all").empty:
-            return empty_fig(360, palette=palette)
+            return empty_fig(360)
 
         fig = px.imshow(
             pivot, labels=dict(x="Month", y="", color="Z-score"),
-            color_continuous_scale=anomaly_colorscale(theme_name), zmin=-2, zmax=2, aspect="auto",
+            color_continuous_scale="RdBu", zmin=-2, zmax=2, aspect="auto",
         )
         fig.update_layout(
             margin=dict(l=85, r=5, t=10, b=35), height=360,
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=palette["text"], size=10),
-            coloraxis_colorbar=dict(title="Z-score", thickness=10, len=0.75),
+            font=dict(color="#cbd5e1", size=10),
+            coloraxis_colorbar=dict(title="Anomaly", thickness=10, len=0.75),
             xaxis=dict(dtick=1),
         )
         return fig
 
     # ---------------- TAB 5: ML prediction ----------------
     @output
-    @render.ui
-    def forecast_model_summary():
-        history = current_daily_history()
-        forecast = current_daily_forecast()
-        horizon_months = int(input.forecast_horizon_months())
-        forecast_days = len(forecast.index) if not forecast.empty else 0
-        history_span = "No selected history slice"
-        if not history.empty:
-            history_span = (
-                f"{history['date'].min():%Y} to {history['date'].max():%Y}"
-            )
-
-        return ui.div(
-            ui.div(
-                ui.div("Model family", class_="ml-summary-label"),
-                ui.div("Two-stage recursive XGBoost", class_="ml-summary-value"),
-                ui.div(
-                    "Classifier for rain occurrence plus regressor for rainfall amount.",
-                    class_="ml-summary-note",
-                ),
-                class_="ml-summary-card",
-            ),
-            ui.div(
-                ui.div("Features used", class_="ml-summary-label"),
-                ui.div("Daily lags, rolling rain stats, wet/dry streaks, seasonality", class_="ml-summary-value"),
-                ui.div(
-                    "Long lags up to one year are available through the full daily history files.",
-                    class_="ml-summary-note",
-                ),
-                class_="ml-summary-card",
-            ),
-            ui.div(
-                ui.div("Selected display window", class_="ml-summary-label"),
-                ui.div(history_span, class_="ml-summary-value"),
-                ui.div(
-                    "The control below changes the observed history shown in the chart, not the underlying model export.",
-                    class_="ml-summary-note",
-                ),
-                class_="ml-summary-card",
-            ),
-            ui.div(
-                ui.div("Forecast shown", class_="ml-summary-label"),
-                ui.div(f"{horizon_months} month(s) / {forecast_days} daily rows", class_="ml-summary-value"),
-                ui.div(
-                    "Useful for regime and seasonality context. Do not read it as day-level event certainty.",
-                    class_="ml-summary-note",
-                ),
-                class_="ml-summary-card",
-            ),
-            class_="ml-summary-grid",
-        )
-
-    @output
-    @render.ui
-    def forecast_model_note():
-        return ui.HTML(
-            "This preview is generated outside the dashboard from <b>raw daily CHIRPS rainfall</b> "
-            "and loaded from <code>modeling/result/</code>. The notebook keeps the most recent "
-            "<b>15 years</b> of valid feature rows for fitting, upweights rainy and heavy-rain days, "
-            "and predicts forward recursively. It is useful for seeing likely wet/dry regime behavior, "
-            "but the app does <b>not</b> currently expose held-out accuracy metrics or calibrated warning thresholds."
-        )
-
-    @output
     @render_widget
     def rainfall_forecast_plot():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
-        history = current_daily_history()
-        forecast = current_daily_forecast()
+        history = selected_daily_history_df(input)
+        forecast = selected_daily_forecast_df(input)
         if history.empty and forecast.empty:
-            return empty_fig(420, "No historical or forecast rainfall data available", palette)
+            return empty_fig(420, "No historical or forecast rainfall data available")
 
         selected_name = input.forecast_province()
         fig = go.Figure()
@@ -2140,7 +1411,7 @@ def server(input, output, session):
                 y=history["rainfall_mm"],
                 mode="lines",
                 name=f"{selected_name} history",
-                line=dict(color=palette["accent"], width=1.8),
+                line=dict(color=PALETTE["accent"], width=1.8),
                 hovertemplate="Date: %{x|%Y-%m-%d}<br>Observed rainfall: %{y:,.1f} mm<extra></extra>",
             ))
 
@@ -2150,21 +1421,21 @@ def server(input, output, session):
                 y=forecast["predicted_rainfall_mm"],
                 mode="lines",
                 name=f"{selected_name} forecast",
-                line=dict(color=palette["amber"], width=2.5, dash="dash"),
+                line=dict(color=PALETTE["amber"], width=2.5, dash="dash"),
                 hovertemplate="Date: %{x|%Y-%m-%d}<br>Predicted rainfall: %{y:,.1f} mm<extra></extra>",
             ))
             forecast_start = pd.Timestamp(forecast["date"].min())
             forecast_end = pd.Timestamp(forecast["date"].max())
-            fig.add_vline(x=forecast_start, line_dash="dot", line_color=palette["amber"])
+            fig.add_vline(x=forecast_start, line_dash="dot", line_color=PALETTE["amber"])
             fig.add_vrect(
                 x0=forecast_start,
                 x1=forecast_end,
-                fillcolor="rgba(217, 134, 60, 0.10)" if theme_name == "light" else "rgba(245, 158, 11, 0.08)",
+                fillcolor="rgba(245, 158, 11, 0.08)",
                 line_width=0,
                 layer="below",
             )
 
-        apply_plot_layout(fig, palette, 420, legend=True)
+        apply_dark_layout(fig, 420, legend=True)
         fig.update_yaxes(title="Daily rainfall (mm)")
         fig.update_xaxes(title="", rangeslider=dict(visible=True), type="date")
         return fig
@@ -2172,8 +1443,8 @@ def server(input, output, session):
     @output
     @render.ui
     def forecast_window_note():
-        history = current_daily_history()
-        forecast = current_daily_forecast()
+        history = selected_daily_history_df(input)
+        forecast = selected_daily_forecast_df(input)
         history_text = "No historical slice selected."
         forecast_text = "No forecast file found."
 
@@ -2201,8 +1472,6 @@ def server(input, output, session):
     @output
     @render_widget
     def water_trend_plot():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
         p = input.province()
         wdf = df[df["has_water"]]
         if p == "All Provinces":
@@ -2212,23 +1481,22 @@ def server(input, output, session):
             t = wdf[wdf["province_name"] == p].sort_values("date")
             name = p
         if t.empty or t["water_area_km2"].sum() == 0:
-            return empty_fig(340, "No surface-water coverage for this selection", palette)
+            return empty_fig(340, "No surface-water coverage for this selection")
 
         sel_date = pd.Timestamp(year=int(input.year()), month=int(input.month()), day=1)
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=t["date"], y=t["water_area_km2"], mode="lines", name=name,
-            line=dict(color=palette["cyan"], width=2),
-            fill="tozeroy",
-            fillcolor="rgba(58,154,168,0.16)" if theme_name == "light" else "rgba(14,165,233,0.12)",
+            line=dict(color=PALETTE["cyan"], width=2),
+            fill="tozeroy", fillcolor="rgba(14,165,233,0.12)",
         ))
         sel = t[t["date"] == sel_date]
         if not sel.empty:
             fig.add_trace(go.Scatter(
                 x=sel["date"], y=sel["water_area_km2"], mode="markers",
-                name="Selected", marker=dict(color=palette["amber"], size=12),
+                name="Selected", marker=dict(color=PALETTE["amber"], size=12),
             ))
-        apply_plot_layout(fig, palette, 340)
+        apply_dark_layout(fig, 340)
         fig.update_yaxes(title="Surface water (km^2)")
         fig.update_xaxes(title="")
         return fig
@@ -2236,26 +1504,23 @@ def server(input, output, session):
     @output
     @render_widget
     def scatter_plot():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
-        d = current_month_all()
+        d = current_all_provinces_df(input)
         d = d[d["has_water"]].copy()
         d = d[(d["water_area_km2"] > 0) | (d["rainfall_anomaly"] != 0)]
         if d.empty:
-            return empty_fig(340, "No rainfall/water pairs for this month", palette)
+            return empty_fig(340, "No rainfall/water pairs for this month")
 
         selected_p = input.province()
         line_colors = [
-            ("#f8fafc" if theme_name == "dark" else "#3f352c")
-            if (selected_p != "All Provinces" and n == selected_p) else "rgba(0,0,0,0)"
+            "#f8fafc" if (selected_p != "All Provinces" and n == selected_p) else "rgba(0,0,0,0)"
             for n in d["province_name"]
         ]
-        fig = go.FigureWidget(go.Scatter(
+        fig = go.Figure(go.Scatter(
             x=d["rainfall_anomaly"], y=d["water_area_km2"],
             mode="markers+text", text=d["province_name"],
-            textposition="top center", textfont=dict(size=9, color=palette["muted"]),
+            textposition="top center", textfont=dict(size=9, color=PALETTE["muted"]),
             marker=dict(
-                size=14, color=d["rainfall_anomaly"], colorscale=anomaly_colorscale(theme_name),
+                size=14, color=d["rainfall_anomaly"], colorscale="RdBu",
                 cmid=0, showscale=True, line=dict(width=2, color=line_colors),
                 colorbar=dict(title="Anomaly", thickness=12, len=0.7),
             ),
@@ -2264,13 +1529,8 @@ def server(input, output, session):
                 "<br>Water: %{y:,.0f} km^2<extra></extra>"
             ),
         ))
-        def _handle_scatter_click(trace, points, state):
-            if points.point_inds:
-                queue_chart_selected_province(trace.text[points.point_inds[0]])
-
-        fig.data[0].on_click(_handle_scatter_click)
-        fig.add_vline(x=0, line_dash="dot", line_color=palette["muted"])
-        apply_plot_layout(fig, palette, 340)
+        fig.add_vline(x=0, line_dash="dot", line_color=PALETTE["muted"])
+        apply_dark_layout(fig, 340)
         fig.update_xaxes(title="Rainfall anomaly (mm)")
         fig.update_yaxes(title="Surface water (km^2)")
         return fig
@@ -2278,13 +1538,11 @@ def server(input, output, session):
     @output
     @render_widget
     def water_box_plot():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
         y = int(input.year())
         d = df[(df["year"] == y) & df["has_water"]].copy()
         d = d[d["water_area_km2"] > 0]
         if d.empty:
-            return empty_fig(400, "No surface-water coverage for this year", palette)
+            return empty_fig(400, "No surface-water coverage for this year")
 
         # Order provinces by median so the chart reads top-to-bottom.
         order = (
@@ -2300,16 +1558,12 @@ def server(input, output, session):
             fig.add_trace(go.Box(
                 x=vals, name=prov, orientation="h",
                 boxpoints="all", jitter=0.4, pointpos=0,
-                marker=dict(size=4, color=palette["amber"] if is_sel else palette["muted"]),
-                line=dict(color=palette["amber"] if is_sel else palette["cyan"]),
-                fillcolor="rgba(217,134,60,0.18)" if (is_sel and theme_name == "light") else (
-                    "rgba(245,158,11,0.18)" if is_sel else (
-                        "rgba(58,154,168,0.16)" if theme_name == "light" else "rgba(14,165,233,0.12)"
-                    )
-                ),
+                marker=dict(size=4, color=PALETTE["amber"] if is_sel else PALETTE["muted"]),
+                line=dict(color=PALETTE["amber"] if is_sel else PALETTE["cyan"]),
+                fillcolor="rgba(245,158,11,0.18)" if is_sel else "rgba(14,165,233,0.12)",
                 hovertemplate=f"<b>{prov}</b><br>%{{x:,.0f}} km^2<extra></extra>",
             ))
-        apply_plot_layout(fig, palette, 400)
+        apply_dark_layout(fig, 400)
         fig.update_layout(margin=dict(l=90, r=20, t=10, b=38))
         fig.update_xaxes(title=f"Monthly surface water (km^2) - distribution across {y}")
         fig.update_yaxes(showgrid=False)
@@ -2319,32 +1573,22 @@ def server(input, output, session):
     @output
     @render_widget
     def ranking_plot():
-        palette = current_palette(input)
         metric = input.metric()
         label = metric_labels.get(metric, metric)
         d = ranking_frame(input, metric, ascending_for_top=False)
         if d.empty:
-            return empty_fig(380, "No data for this metric / month", palette)
+            return empty_fig(380, "No data for this metric / month")
 
-        colors = highlight_colors(d["province_name"], input.province(), palette["accent"], palette["amber"])
-        fig = go.FigureWidget(go.Bar(
-            x=d[metric],
-            y=d["province_name"],
-            orientation="h",
-            text=d[metric],
-            marker_color=colors,
-            hovertemplate="<b>%{y}</b><br>" + label + f": %{{x{metric_plot_formats.get(metric, ':.2f')}}}<extra></extra>",
-        ))
+        colors = highlight_colors(d["province_name"], input.province(), PALETTE["accent"])
+        fig = px.bar(
+            d, x=metric, y="province_name", orientation="h", text=metric,
+            labels={metric: label, "province_name": ""},
+        )
         fig.update_traces(
-            texttemplate=metric_text_template(metric),
+            marker_color=colors, texttemplate=metric_text_template(metric),
             textposition="outside", cliponaxis=False,
         )
-        def _handle_ranking_click(trace, points, state):
-            if points.point_inds:
-                queue_chart_selected_province(trace.y[points.point_inds[0]])
-
-        fig.data[0].on_click(_handle_ranking_click)
-        apply_plot_layout(fig, palette, 380)
+        apply_dark_layout(fig, 380)
         fig.update_layout(margin=dict(l=5, r=50, t=5, b=38))
         fig.update_xaxes(title=label)
         fig.update_yaxes(showgrid=False)
@@ -2353,7 +1597,6 @@ def server(input, output, session):
     @output
     @render_widget
     def comparison_plot():
-        palette = current_palette(input)
         y = int(input.year())
         m = int(input.month())
         metric = input.metric()
@@ -2371,7 +1614,7 @@ def server(input, output, session):
         )
         merged = selected.merge(avg, on="province_name", how="left").dropna(subset=[metric])
         if merged.empty:
-            return empty_fig(380, palette=palette)
+            return empty_fig(380)
 
         k = top_k(input)
         merged = merged.sort_values(metric, ascending=False).head(k).sort_values(metric, ascending=True)
@@ -2381,17 +1624,17 @@ def server(input, output, session):
             fig.add_shape(
                 type="line", x0=row["historical_average"], x1=row[metric],
                 y0=row["province_name"], y1=row["province_name"],
-                line=dict(color=palette["border"], width=2),
+                line=dict(color="#334155", width=2),
             )
         fig.add_trace(go.Scatter(
             x=merged["historical_average"], y=merged["province_name"], mode="markers",
-            name="Historical avg", marker=dict(color=palette["muted"], size=9, symbol="circle-open"),
+            name="Historical avg", marker=dict(color=PALETTE["muted"], size=9, symbol="circle-open"),
         ))
         fig.add_trace(go.Scatter(
             x=merged[metric], y=merged["province_name"], mode="markers",
-            name="Selected month", marker=dict(color=palette["accent"], size=11),
+            name="Selected month", marker=dict(color=PALETTE["accent"], size=11),
         ))
-        apply_plot_layout(fig, palette, 380, legend=True)
+        apply_dark_layout(fig, 380, legend=True)
         fig.update_xaxes(title=label)
         fig.update_yaxes(title="", showgrid=False)
         return fig
@@ -2399,37 +1642,35 @@ def server(input, output, session):
     @output
     @render_widget
     def province_timeline_plot():
-        theme_name = current_theme_name(input)
-        palette = current_palette(input)
         p = input.province()
         if p == "All Provinces":
-            return empty_fig(360, "Select a single province in the sidebar to see its timeline", palette)
+            return empty_fig(360, "Select a single province in the sidebar to see its timeline")
         t = df[df["province_name"] == p].sort_values("date")
         if t.empty:
-            return empty_fig(360, palette=palette)
+            return empty_fig(360)
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=t["date"], y=t["rainfall_mm"], mode="lines",
-            name="Rainfall (mm)", line=dict(color=palette["accent"], width=1.6),
+            name="Rainfall (mm)", line=dict(color=PALETTE["accent"], width=1.6),
             yaxis="y1",
         ))
         wt = t[t["has_water"]]
         if not wt.empty:
             fig.add_trace(go.Scatter(
                 x=wt["date"], y=wt["water_area_km2"], mode="lines",
-                name="Surface water (km^2)", line=dict(color=palette["cyan"], width=1.6),
+                name="Surface water (km^2)", line=dict(color=PALETTE["cyan"], width=1.6),
                 yaxis="y2",
             ))
         sel_date = pd.Timestamp(year=int(input.year()), month=int(input.month()), day=1)
-        fig.add_vline(x=sel_date, line_dash="dot", line_color="#e2e8f0" if theme_name == "dark" else "#4a3f35")
+        fig.add_vline(x=sel_date, line_dash="dot", line_color="#e2e8f0")
         fig.update_layout(
             height=360, margin=dict(l=50, r=55, t=10, b=38),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=palette["text"], size=11),
+            font=dict(color=PALETTE["text"], size=11),
             legend=dict(orientation="h", y=1.12, x=1, xanchor="right"),
-            xaxis=dict(showgrid=True, gridcolor=palette["grid"], zeroline=False, title=""),
-            yaxis=dict(title="Rainfall (mm)", showgrid=True, gridcolor=palette["grid"], zeroline=False),
+            xaxis=dict(showgrid=True, gridcolor=PALETTE["grid"], zeroline=False, title=""),
+            yaxis=dict(title="Rainfall (mm)", showgrid=True, gridcolor=PALETTE["grid"], zeroline=False),
             yaxis2=dict(title="Surface water (km^2)", overlaying="y", side="right", showgrid=False, zeroline=False),
         )
         return fig

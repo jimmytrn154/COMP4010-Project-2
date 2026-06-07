@@ -261,16 +261,18 @@ WATER_METRICS = {"water_area_km2", "water_area_pct"}
 # Plot styling helpers (shared dark theme)
 # ==========================================================
 
+# Warm, cozy light palette — colours chosen to read clearly on the cream
+# dashboard background while keeping rainfall=blue / dryness=amber semantics.
 PALETTE = {
-    "accent": "#38bdf8",
-    "cyan": "#0ea5e9",
-    "purple": "#8b5cf6",
-    "rose": "#f43f5e",
-    "amber": "#f59e0b",
-    "green": "#34d399",
-    "grid": "#1e293b",
-    "muted": "#94a3b8",
-    "text": "#cbd5e1",
+    "accent": "#2e7fb0",   # rainfall blue (still readable on cream)
+    "cyan": "#3a9aa8",     # teal
+    "purple": "#8a6fd1",   # soft violet
+    "rose": "#d9556b",     # warm rose
+    "amber": "#d9863c",    # warm amber / terracotta
+    "green": "#6f9a52",    # warm sage
+    "grid": "#ece0d0",     # soft warm gridlines
+    "muted": "#9a8a78",    # warm muted brown-grey
+    "text": "#4a3f35",     # warm dark brown text
 }
 
 
@@ -417,12 +419,12 @@ def summary_bullets(province, year, month):
 
 custom_css = """
 :root {
-    --bg: #07111f;
-    --panel: #0d1b2e;
-    --border: #22344d;
-    --text: #f8fafc;
-    --muted: #9fb0c7;
-    --accent: #38bdf8;
+    --bg: #faf3e9;       /* warm cream background */
+    --panel: #fffcf6;    /* soft warm white cards */
+    --border: #ecdcc6;   /* gentle tan border */
+    --text: #3f352c;     /* warm dark brown text */
+    --muted: #8d7c6a;    /* warm muted brown-grey */
+    --accent: #d9863c;   /* cozy amber / terracotta accent */
 }
 html, body, .bslib-page-sidebar {
     background: var(--bg) !important;
@@ -439,7 +441,7 @@ html, body, .bslib-page-sidebar {
     font-size: 2.0rem;
     font-weight: 800;
     letter-spacing: -0.01em;
-    background: linear-gradient(90deg, #38bdf8, #818cf8);
+    background: linear-gradient(90deg, #e0913f, #d4623a);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -452,13 +454,13 @@ html, body, .bslib-page-sidebar {
 }
 /* Sidebar */
 .bslib-sidebar-layout > .sidebar {
-    background: var(--panel) !important;
+    background: #fdf6ea !important;
     border-right: 1px solid var(--border);
 }
 .bslib-sidebar-layout > .sidebar .sidebar-content { color: var(--text); }
 .sidebar-section-title {
     font-weight: 800;
-    color: #e2e8f0;
+    color: #4a3f35;
     font-size: 0.95rem;
     margin: 4px 0 2px 0;
 }
@@ -475,7 +477,7 @@ html, body, .bslib-page-sidebar {
     font-weight: 700;
 }
 .nav-tabs .nav-link.active {
-    color: #f8fafc !important;
+    color: #3f352c !important;
     background: transparent !important;
     border-bottom: 2px solid var(--accent) !important;
 }
@@ -491,7 +493,7 @@ html, body, .bslib-page-sidebar {
     border-radius: 16px;
     padding: 16px 18px;
     margin-bottom: 16px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    box-shadow: 0 8px 22px rgba(150, 110, 60, 0.10);
 }
 .chart-card {
     background: var(--panel);
@@ -499,11 +501,12 @@ html, body, .bslib-page-sidebar {
     border-radius: 16px;
     padding: 16px 18px;
     margin-bottom: 16px;
+    box-shadow: 0 8px 22px rgba(150, 110, 60, 0.08);
 }
 .card-title {
     font-size: 1.03rem;
     font-weight: 800;
-    color: #f8fafc;
+    color: #3f352c;
     margin-bottom: 4px;
 }
 .card-subtitle {
@@ -513,18 +516,18 @@ html, body, .bslib-page-sidebar {
     line-height: 1.45;
 }
 .lead-note {
-    color: #cbd5e1;
-    background: rgba(56, 189, 248, 0.08);
-    border: 1px solid rgba(56, 189, 248, 0.20);
+    color: #5c4f42;
+    background: rgba(217, 134, 60, 0.10);
+    border: 1px solid rgba(217, 134, 60, 0.28);
     border-radius: 14px;
     padding: 12px 16px;
     margin-bottom: 16px;
     font-size: 0.9rem;
     line-height: 1.55;
 }
-.lead-note b { color: #e2e8f0; }
-.obs-list { margin: 0; padding-left: 18px; color: #cbd5e1; font-size: 0.92rem; line-height: 1.6; }
-.obs-list b { color: #f1f5f9; }
+.lead-note b { color: #4a3f35; }
+.obs-list { margin: 0; padding-left: 18px; color: #5c4f42; font-size: 0.92rem; line-height: 1.6; }
+.obs-list b { color: #3f352c; }
 .kpi-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -538,21 +541,22 @@ html, body, .bslib-page-sidebar {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    background: linear-gradient(135deg, #1d4ed8, #2563eb);
+    background: linear-gradient(135deg, #d97a4a, #c25733);  /* terracotta */
+    box-shadow: 0 8px 20px rgba(170, 100, 55, 0.18);
 }
-.kpi.cyan { background: linear-gradient(135deg, #0369a1, #0ea5e9); }
-.kpi.amber { background: linear-gradient(135deg, #b45309, #f59e0b); }
-.kpi.green { background: linear-gradient(135deg, #047857, #10b981); }
+.kpi.cyan { background: linear-gradient(135deg, #cf9a45, #b97c24); }   /* honey / caramel */
+.kpi.amber { background: linear-gradient(135deg, #e0a93f, #cf8a2e); }  /* golden */
+.kpi.green { background: linear-gradient(135deg, #7d9e57, #5f8442); }  /* warm sage */
 .kpi-label {
     text-transform: uppercase;
     letter-spacing: 0.10em;
     font-size: 0.70rem;
     font-weight: 800;
-    opacity: 0.82;
-    color: #f8fafc;
+    opacity: 0.92;
+    color: #fff7ec;
 }
 .kpi-value { font-size: 1.55rem; font-weight: 850; line-height: 1.1; margin-top: 6px; color: #fff; }
-.kpi-note { font-size: 0.74rem; opacity: 0.85; color: #f1f5f9; }
+.kpi-note { font-size: 0.74rem; opacity: 0.9; color: #fff5e6; }
 .duo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .forecast-control-grid {
     display: grid;
@@ -568,9 +572,9 @@ html, body, .bslib-page-sidebar {
     line-height: 1.5;
 }
 .caveat-box {
-    color: #fde68a;
-    background: rgba(245, 158, 11, 0.10);
-    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #8a5212;
+    background: rgba(224, 169, 63, 0.14);
+    border: 1px solid rgba(224, 169, 63, 0.40);
     border-radius: 12px;
     padding: 12px 16px;
     margin: 14px 0;
@@ -578,48 +582,113 @@ html, body, .bslib-page-sidebar {
     line-height: 1.55;
 }
 .future-box {
-    color: #cbd5e1;
-    background: rgba(139, 92, 246, 0.10);
-    border: 1px dashed rgba(139, 92, 246, 0.45);
+    color: #5c4f42;
+    background: rgba(176, 124, 74, 0.12);
+    border: 1px dashed rgba(176, 124, 74, 0.45);
     border-radius: 12px;
     padding: 12px 16px;
     margin: 14px 0;
     font-size: 0.88rem;
     line-height: 1.55;
 }
-.future-box b { color: #c4b5fd; }
-.method-block { color: #cbd5e1; font-size: 0.9rem; line-height: 1.6; }
-.method-block h4 { color: #f1f5f9; margin: 16px 0 6px 0; font-size: 1.02rem; }
+.future-box b { color: #a05a22; }
+.method-block { color: #5c4f42; font-size: 0.9rem; line-height: 1.6; }
+.method-block h4 { color: #3f352c; margin: 16px 0 6px 0; font-size: 1.02rem; }
 .method-block ul { padding-left: 20px; }
-.method-block code { color: var(--accent); background: #0b1626; padding: 1px 6px; border-radius: 6px; }
-.shiny-input-container { margin-bottom: 12px; color: #cbd5e1; }
+.method-block code { color: #b5651d; background: #f5e8d6; padding: 1px 6px; border-radius: 6px; }
+.shiny-input-container { margin-bottom: 12px; color: #5c4f42; }
 .form-select, .form-control {
-    background-color: #17243a !important;
-    border: 1px solid #334155 !important;
-    color: #f8fafc !important;
+    background-color: #fffcf6 !important;
+    border: 1px solid #e0cdb3 !important;
+    color: #3f352c !important;
     border-radius: 10px !important;
 }
 .method-card summary::before { content: "> "; color: var(--accent); }
 .method-card details[open] summary::before { content: "v "; }
 .irs--shiny .irs-line {
-    background: #334155 !important;
-    border: 1px solid #475569 !important;
-    box-shadow: inset 0 1px 2px rgba(7, 17, 31, 0.45);
+    background: #ecddc8 !important;
+    border: 1px solid #ddc8a9 !important;
+    box-shadow: inset 0 1px 2px rgba(150, 110, 60, 0.18);
 }
-.irs--shiny .irs-bar, .irs--shiny .irs-single { background: #38bdf8 !important; border-color: #38bdf8 !important; }
+.irs--shiny .irs-bar, .irs--shiny .irs-single { background: #d9863c !important; border-color: #d9863c !important; }
 .irs--shiny .irs-bar-edge {
-    background: #38bdf8 !important;
-    border-color: #38bdf8 !important;
+    background: #d9863c !important;
+    border-color: #d9863c !important;
 }
 .irs--shiny .irs-handle {
-    border-color: #38bdf8 !important;
-    background: #dff5ff !important;
-    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.28);
+    border-color: #d9863c !important;
+    background: #fff4e3 !important;
+    box-shadow: 0 0 0 1px rgba(217, 134, 60, 0.30);
 }
-.irs--shiny .irs-min, .irs--shiny .irs-max, .irs--shiny .irs-grid-text { color: #9fb0c7 !important; }
+.irs--shiny .irs-min, .irs--shiny .irs-max, .irs--shiny .irs-grid-text { color: #8d7c6a !important; }
 @media (max-width: 1100px) {
     .kpi-grid, .duo-grid, .forecast-control-grid { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================
+   Header layout for the Light/Dark toggle
+   ========================================================== */
+.app-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+.app-header-text { flex: 1 1 auto; min-width: 0; }
+.theme-toggle { flex: 0 0 auto; padding-top: 4px; }
+
+/* ==========================================================
+   DARK THEME
+   bslib's input_dark_mode sets data-bs-theme="dark" on <html>.
+   We flip the CSS variables (which most rules already use) and
+   override the remaining hard-coded warm-light surfaces.
+   ========================================================== */
+[data-bs-theme="dark"] {
+    --bg: #181410;       /* warm near-black */
+    --panel: #241e18;    /* warm dark card */
+    --border: #3a3026;   /* warm dark border */
+    --text: #ece2d4;     /* warm light text */
+    --muted: #a89785;    /* warm muted tan */
+    --accent: #e0913f;   /* amber accent (pops on dark) */
+}
+[data-bs-theme="dark"] .bslib-sidebar-layout > .sidebar {
+    background: #201a14 !important;
+}
+[data-bs-theme="dark"] .sidebar-section-title { color: #f0e7d9; }
+[data-bs-theme="dark"] .nav-tabs .nav-link.active { color: #f3eadc; }
+[data-bs-theme="dark"] .card-title { color: #f0e7d9; }
+[data-bs-theme="dark"] .lead-note { color: #d8ccbb; }
+[data-bs-theme="dark"] .lead-note b { color: #f0e7d9; }
+[data-bs-theme="dark"] .obs-list { color: #d8ccbb; }
+[data-bs-theme="dark"] .obs-list b { color: #f0e7d9; }
+[data-bs-theme="dark"] .future-box { color: #d8ccbb; }
+[data-bs-theme="dark"] .future-box b { color: #e9b066; }
+[data-bs-theme="dark"] .caveat-box { color: #e9c07a; }
+[data-bs-theme="dark"] .method-block { color: #d8ccbb; }
+[data-bs-theme="dark"] .method-block h4 { color: #f0e7d9; }
+[data-bs-theme="dark"] .method-block code { color: #e9b066; background: #2e261d; }
+[data-bs-theme="dark"] .shiny-input-container { color: #d8ccbb; }
+[data-bs-theme="dark"] .form-select,
+[data-bs-theme="dark"] .form-control {
+    background-color: #2a221b !important;
+    border-color: #3f3328 !important;
+    color: #ece2d4 !important;
+}
+[data-bs-theme="dark"] .irs--shiny .irs-line {
+    background: #2e261d !important;
+    border-color: #3f3328 !important;
+}
+[data-bs-theme="dark"] .irs--shiny .irs-handle { background: #3a2f23 !important; }
+[data-bs-theme="dark"] .irs--shiny .irs-min,
+[data-bs-theme="dark"] .irs--shiny .irs-max,
+[data-bs-theme="dark"] .irs--shiny .irs-grid-text { color: #a89785 !important; }
+
+/* Plotly charts have transparent backgrounds, so they sit on the page bg.
+   Their text/gridlines are baked into SVG by the server; override them here
+   so the charts follow the theme without needing a Python re-render. */
+[data-bs-theme="dark"] .js-plotly-plot .plotly text { fill: #cdbfac !important; }
+[data-bs-theme="dark"] .js-plotly-plot .gridlayer path { stroke: #352b21 !important; }
+[data-bs-theme="dark"] .js-plotly-plot .zerolinelayer path { stroke: #4a3d2e !important; }
 """
 
 
@@ -674,16 +743,23 @@ app_ui = ui.page_sidebar(
     ),
     # ---- Header --------------------------------------------------
     ui.div(
-        ui.h1("Mekong FloodLens"),
         ui.div(
-            "A data-storytelling view of the Vietnamese Mekong Delta: monthly "
-            "rainfall, dry/wet anomalies, and observed surface-water extent across "
-            "13 provinces. This is an exploratory, observational dashboard - not an "
-            "official flood-prediction system.",
-            class_="subtitle",
+            ui.h1("Mekong FloodLens"),
+            ui.div(
+                "A data-storytelling view of the Vietnamese Mekong Delta: monthly "
+                "rainfall, dry/wet anomalies, and observed surface-water extent across "
+                "13 provinces. This is an exploratory, observational dashboard - not an "
+                "official flood-prediction system.",
+                class_="subtitle",
+            ),
+            class_="app-header-text",
+        ),
+        # Light / Dark theme switch (toggles data-bs-theme on <html>)
+        ui.div(
+            ui.input_dark_mode(id="theme_mode", mode="light"),
+            class_="theme-toggle",
         ),
         class_="app-header",
-
     ),
     # ---- Tabs ----------------------------------------------------
     ui.navset_card_tab(
@@ -1151,14 +1227,14 @@ def server(input, output, session):
             hover_name="province_name",
             hover_data=hover_data,
             color_continuous_scale=color_scale,
-            mapbox_style="carto-darkmatter",
+            mapbox_style="carto-positron",
             center={"lat": 9.95, "lon": 105.65},
             zoom=6.6,
             opacity=0.78,
         )
         fig.update_traces(
             marker_line_width=1.1,
-            marker_line_color="rgba(248,250,252,0.55)",
+            marker_line_color="rgba(120,90,60,0.45)",
             selector=dict(type="choroplethmapbox"),
         )
 
@@ -1166,17 +1242,17 @@ def server(input, output, session):
         if not labels.empty:
             fig.add_trace(go.Scattermapbox(
                 lon=labels["lon"], lat=labels["lat"], text=labels["province_name"],
-                mode="text", textfont=dict(size=11, color="#fff7ed"),
+                mode="text", textfont=dict(size=11, color="#3f352c"),
                 hoverinfo="skip", showlegend=False,
             ))
         fig.update_layout(
             height=520, autosize=True,
             margin=dict(l=0, r=0, t=0, b=0),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#f8fafc"),
+            font=dict(color="#4a3f35"),
             coloraxis_colorbar=dict(
                 title=label, thickness=14, len=0.65, y=0.5, x=0.98,
-                bgcolor="rgba(15,23,42,0.7)",
+                bgcolor="rgba(255,252,246,0.78)",
             ),
         )
         return fig

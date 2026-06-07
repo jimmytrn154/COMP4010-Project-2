@@ -283,6 +283,9 @@ PALETTE = {
     "text": "#e2e8f0",
 }
 
+RAINFALL_3D_ELEVATION_SCALE = 2.4
+RAINFALL_3D_SELECTED_ELEVATION_SCALE = 2.55
+
 
 def apply_dark_layout(fig, height, *, legend=False, font_size=11):
     """Apply the shared transparent dark-dashboard styling to a Plotly figure."""
@@ -1168,11 +1171,6 @@ def province_rainfall_3d_frame(selected_province):
     frame["rank"] = frame["mean_rainfall_mm"].rank(method="first", ascending=False).astype(int)
     frame = frame.dropna(subset=["lon", "lat"]).reset_index(drop=True)
     frame["elevation_m"] = scaled_sizes(frame["mean_rainfall_mm"], lo=6000, hi=26000).round(0)
-    frame["radius_m"] = np.where(
-        (selected_province != "All Provinces") & (frame["province_name"] == selected_province),
-        13000,
-        11000,
-    )
     frame["fill_color"] = [
         [245, 158, 11, 235] if (selected_province != "All Provinces" and n == selected_province)
         else [20, 184, 166, 230]
@@ -1183,7 +1181,12 @@ def province_rainfall_3d_frame(selected_province):
         else [56, 189, 248, 210]
         for n in frame["province_name"]
     ]
-    frame["label_altitude_m"] = frame["elevation_m"] + 1800
+    frame["label_altitude_m"] = frame["elevation_m"] * RAINFALL_3D_ELEVATION_SCALE + 1600
+    frame["text_color"] = [
+        [120, 53, 15, 255] if (selected_province != "All Provinces" and n == selected_province)
+        else [15, 23, 42, 255]
+        for n in frame["province_name"]
+    ]
     return frame
 
 
@@ -1590,13 +1593,6 @@ def server(input, output, session):
                 class_="card-subtitle",
             )
 
-        label_df = clim.head(3).copy()
-        if selected_p != "All Provinces":
-            selected_label = clim[clim["province_name"] == selected_p]
-            if not selected_label.empty and selected_label["province_name"].iloc[0] not in label_df["province_name"].tolist():
-                label_df = pd.concat([label_df, selected_label], ignore_index=True)
-                label_df = label_df.drop_duplicates(subset=["province_name"])
-
         geo_layer = pdk.Layer(
             "GeoJsonLayer",
             data=geojson_data,
@@ -1614,29 +1610,29 @@ def server(input, output, session):
             data=clim.to_dict("records"),
             get_position=["lon", "lat"],
             get_elevation="elevation_m",
-            elevation_scale=1,
-            radius="radius_m",
+            elevation_scale=RAINFALL_3D_ELEVATION_SCALE,
+            radius=11500,
             get_fill_color="fill_color",
             get_line_color="line_color",
-            line_width_min_pixels=1,
+            line_width_min_pixels=2,
             extruded=True,
             stroked=True,
             pickable=True,
             auto_highlight=False,
             disk_resolution=4,
-            coverage=0.9,
+            coverage=1.0,
         )
         text_layer = pdk.Layer(
             "TextLayer",
-            data=label_df.to_dict("records"),
-            get_position=["lon", "lat"],
+            data=clim.to_dict("records"),
+            get_position=["lon", "lat", "label_altitude_m"],
             get_text="province_name",
-            get_color=[226, 232, 240, 235],
-            get_size=14,
-            size_units="meters",
-            size_scale=120,
-            get_alignment_baseline="bottom",
-            get_pixel_offset=[0, -14],
+            get_color="text_color",
+            get_size=18,
+            size_units="'pixels'",
+            get_alignment_baseline="'bottom'",
+            get_text_anchor="'middle'",
+            billboard=True,
             pickable=False,
         )
         glow_layer = None
@@ -1648,7 +1644,7 @@ def server(input, output, session):
                     data=selected_marker.to_dict("records"),
                     get_position=["lon", "lat"],
                     get_elevation="elevation_m",
-                    elevation_scale=1.05,
+                    elevation_scale=RAINFALL_3D_SELECTED_ELEVATION_SCALE,
                     get_fill_color=[[253, 230, 138, 68]],
                     radius=15500,
                     extruded=True,
@@ -1669,12 +1665,12 @@ def server(input, output, session):
             deck = pdk.Deck(
                 layers=layers,
                 initial_view_state=pdk.ViewState(
-                    latitude=9.95,
-                    longitude=105.65,
-                    zoom=6.55,
-                    pitch=54,
-                    bearing=-15,
-                ),
+                latitude=9.95,
+                longitude=105.65,
+                zoom=6.7,
+                pitch=58,
+                bearing=-18,
+            ),
                 tooltip={
                     "html": (
                         "<b>{province_name}</b><br/>"

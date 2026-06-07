@@ -58,6 +58,7 @@ At the current repo state:
 - province-level forecast result files for the next 12 months already exist in `modeling/result/`
 - the main Shiny dashboard is implemented in `app_refactored.py`
 - the dashboard includes an `ML Prediction` tab that visualizes observed daily history plus recursive XGBoost forecast output
+- the Summary tab now includes a true 3D long-run rainfall map built with `pydeck`
 
 For the running project log, see [PROJECT_PROGRESS_UPDATED.md](PROJECT_PROGRESS_UPDATED.md).
 
@@ -330,6 +331,7 @@ Current dependencies in [requirements.txt](requirements.txt):
 - `pandas==2.3.3`
 - `shiny==1.6.2`
 - `plotly==5.24.1`
+- `pydeck==0.8.0`
 - `geopandas==1.1.3`
 - `htmltools==0.7.0`
 - `shinywidgets==0.8.1`
